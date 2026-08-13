@@ -1,293 +1,232 @@
-/* ─── Google Fonts ─────────────────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
+/* ==========================================================================
+   CareerOS design tokens — source of truth: docs/04_UI_UX_Design_Brief.md
+   Premium SaaS, light-mode first. Linear × Notion × Vercel dashboard.
+   ========================================================================== */
 
-/* ─── CareerOS Design System ────────────────────────────────────────────────── */
 @theme {
-  /* Brand Colors */
+  /* ─── Brand ─────────────────────────────────────────────────────────── */
   --color-brand-50: #eef2ff;
   --color-brand-100: #e0e7ff;
   --color-brand-200: #c7d2fe;
-  --color-brand-300: #a5b4fc;
   --color-brand-400: #818cf8;
   --color-brand-500: #6366f1;
   --color-brand-600: #4f46e5;
-  --color-brand-700: #4338ca;
-  --color-brand-800: #3730a3;
-  --color-brand-900: #312e81;
+  --color-brand-700: #3730a3;
 
-  /* Neutral Colors */
-  --color-neutral-50: #f9fafb;
-  --color-neutral-100: #f3f4f6;
-  --color-neutral-200: #e5e7eb;
-  --color-neutral-300: #d1d5db;
-  --color-neutral-400: #9ca3af;
-  --color-neutral-500: #6b7280;
-  --color-neutral-600: #4b5563;
-  --color-neutral-700: #374151;
-  --color-neutral-800: #1f2937;
-  --color-neutral-900: #111827;
+  /* ─── Surfaces ──────────────────────────────────────────────────────── */
+  --color-canvas: #f9fafb;
+  --color-surface: #ffffff;
+  --color-surface-hover: #f3f4f6;
+  --color-surface-active: #eef2ff;
 
-  /* Status Colors */
-  --color-success-50: #ecfdf5;
-  --color-success-100: #d1fae5;
-  --color-success-500: #10b981;
-  --color-success-600: #059669;
-  --color-success-700: #047857;
+  /* ─── Text ──────────────────────────────────────────────────────────── */
+  --color-ink: #111827;
+  --color-ink-secondary: #4b5563;
+  --color-ink-muted: #9ca3af;
 
-  --color-warning-50: #fffbeb;
-  --color-warning-100: #fef3c7;
-  --color-warning-500: #f59e0b;
-  --color-warning-600: #d97706;
+  /* ─── Borders ───────────────────────────────────────────────────────── */
+  --color-line: #e5e7eb;
+  --color-line-subtle: #f3f4f6;
+  --color-line-focus: #818cf8;
 
-  --color-danger-50: #fef2f2;
-  --color-danger-100: #fee2e2;
-  --color-danger-500: #ef4444;
-  --color-danger-600: #dc2626;
-  --color-danger-700: #b91c1c;
+  /* ─── Status ────────────────────────────────────────────────────────── */
+  --color-success: #059669;
+  --color-success-bg: #ecfdf5;
+  --color-warning: #f59e0b;
+  --color-warning-bg: #fffbeb;
+  --color-danger: #dc2626;
+  --color-danger-bg: #fef2f2;
+  --color-info: #2563eb;
+  --color-info-bg: #eff6ff;
 
-  --color-info-50: #eff6ff;
-  --color-info-500: #3b82f6;
-  --color-info-600: #2563eb;
+  /* ─── Typography ────────────────────────────────────────────────────── */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
 
-  /* Typography */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'Geist Mono', 'Fira Code', monospace;
+  --text-page-title: 1.5rem; /* 24px / H1 */
+  --text-page-title--line-height: 2rem;
+  --text-page-title--letter-spacing: -0.02em;
+  --text-page-title--font-weight: 700;
 
-  /* Border Radius */
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-  --radius-full: 9999px;
+  --text-section: 1.125rem; /* 18px / H2 */
+  --text-section--line-height: 1.625rem;
+  --text-section--font-weight: 600;
 
-  /* Shadows */
-  --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
-  --shadow-card-hover: 0 4px 12px 0 rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-modal: 0 20px 60px rgba(0, 0, 0, 0.15), 0 4px 16px rgba(0, 0, 0, 0.08);
-  --shadow-dropdown: 0 8px 24px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.06);
+  --text-card-title: 0.9375rem; /* 15px */
+  --text-card-title--line-height: 1.375rem;
+  --text-card-title--font-weight: 600;
+
+  --text-body: 0.875rem; /* 14px */
+  --text-body--line-height: 1.5rem;
+
+  --text-label: 0.75rem; /* 12px */
+  --text-label--line-height: 1rem;
+  --text-label--font-weight: 500;
+
+  --text-score: 3rem; /* 48px gauge numerals */
+  --text-score--line-height: 1;
+  --text-score--letter-spacing: -0.03em;
+  --text-score--font-weight: 700;
+
+  /* ─── Radius ────────────────────────────────────────────────────────── */
+  --radius-badge: 6px;
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-modal: 16px;
+
+  /* ─── Shadows ───────────────────────────────────────────────────────── */
+  --shadow-card: 0 1px 3px rgb(0 0 0 / 0.08);
+  --shadow-card-hover: 0 4px 12px rgb(0 0 0 / 0.1);
+  --shadow-dropdown: 0 10px 24px rgb(0 0 0 / 0.12);
+  --shadow-modal: 0 20px 60px rgb(0 0 0 / 0.15);
+
+  /* ─── Motion ────────────────────────────────────────────────────────── */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
 }
 
-/* ─── Base Styles ────────────────────────────────────────────────────────────── */
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Design brief: visible focus ring on every interactive element. */
+  :focus-visible {
+    outline: 2px solid var(--color-brand-400);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background-color: var(--color-brand-100);
+    color: var(--color-brand-700);
+  }
+
+  /* Tabular numerals keep KPI and score columns from jittering. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
-:root {
-  --background: #f9fafb;
-  --foreground: #111827;
-  --sidebar-width: 240px;
-  --header-height: 60px;
+/* ==========================================================================
+   Component primitives — the repeated shapes from the design brief.
+   Anything used on 3+ screens lives here instead of being re-typed.
+   ========================================================================== */
+
+@layer components {
+  .card {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+  }
+
+  .card-interactive {
+    transition:
+      border-color 200ms ease,
+      box-shadow 200ms ease;
+  }
+
+  .card-interactive:hover {
+    border-color: var(--color-brand-200);
+    box-shadow: var(--shadow-card-hover);
+  }
+
+  .section-label {
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-ink-muted);
+  }
 }
 
-html,
-body {
-  max-width: 100vw;
-  overflow-x: hidden;
-  font-family: var(--font-sans);
-  background-color: var(--background);
-  color: var(--foreground);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* ==========================================================================
+   Motion — subtle and purposeful, per the design brief.
+   Every animation is disabled under prefers-reduced-motion.
+   ========================================================================== */
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
-/* ─── Scrollbar Styling ──────────────────────────────────────────────────────── */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--color-neutral-100);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--color-neutral-300);
-  border-radius: 9999px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-neutral-400);
-}
-
-/* ─── Utility Classes ────────────────────────────────────────────────────────── */
-
-/* Cards */
-.card {
-  background: white;
-  border: 1px solid var(--color-neutral-200);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  padding: 20px;
-}
-
-.card-hover {
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
-}
-
-.card-hover:hover {
-  border-color: var(--color-brand-200);
-  box-shadow: var(--shadow-card-hover);
-}
-
-/* Score Color Classes */
-.score-excellent { color: var(--color-success-600); }
-.score-good { color: var(--color-brand-600); }
-.score-fair { color: var(--color-warning-500); }
-.score-weak { color: var(--color-danger-600); }
-
-.score-bg-excellent { background: var(--color-success-50); border-color: var(--color-success-100); }
-.score-bg-good { background: var(--color-brand-50); border-color: var(--color-brand-100); }
-.score-bg-fair { background: var(--color-warning-50); border-color: var(--color-warning-100); }
-.score-bg-weak { background: var(--color-danger-50); border-color: var(--color-danger-100); }
-
-/* Skeleton Loading */
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
-.skeleton {
-  background: linear-gradient(
+@utility animate-fade-in {
+  animation: fade-in 150ms ease-out both;
+}
+
+@utility animate-rise-in {
+  animation: rise-in 220ms var(--ease-out-quart) both;
+}
+
+/* Skeleton loaders, not spinners — design brief, Loading States. */
+@utility skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--color-line-subtle);
+  border-radius: var(--radius-control);
+}
+
+@utility skeleton-shimmer {
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
     90deg,
-    var(--color-neutral-200) 25%,
-    var(--color-neutral-100) 50%,
-    var(--color-neutral-200) 75%
+    transparent,
+    rgb(255 255 255 / 0.65),
+    transparent
   );
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-  border-radius: var(--radius-md);
+  animation: shimmer 1.6s infinite;
 }
 
-/* Animations */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
-
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.96); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-.animate-fade-in {
-  animation: fadeIn 0.15s ease-out;
-}
-
-.animate-slide-up {
-  animation: slideUp 0.2s ease-out;
-}
-
-.animate-scale-in {
-  animation: scaleIn 0.2s ease-out;
-}
-
-/* Progress Bar Animation */
-@keyframes progressFill {
-  from { width: 0%; }
-  to { width: var(--progress-width); }
-}
-
-.progress-bar-animated {
-  animation: progressFill 0.8s ease-out forwards;
-}
-
-/* Counter Animation */
-@keyframes countUp {
-  from { opacity: 0.4; }
-  to { opacity: 1; }
-}
-
-/* Focus Ring */
-*:focus-visible {
-  outline: 2px solid var(--color-brand-400);
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
-}
-
-/* Status Badge Colors */
-.status-wishlist { background: var(--color-neutral-100); color: var(--color-neutral-600); border: 1px solid var(--color-neutral-200); }
-.status-preparing { background: #faf5ff; color: #7c3aed; border: 1px solid #e9d5ff; }
-.status-applied { background: var(--color-info-50); color: var(--color-info-600); border: 1px solid #bfdbfe; }
-.status-recruiter_screen { background: var(--color-warning-50); color: var(--color-warning-600); border: 1px solid var(--color-warning-100); }
-.status-interview { background: var(--color-brand-50); color: var(--color-brand-700); border: 1px solid var(--color-brand-200); }
-.status-final_round { background: #fdf4ff; color: #a21caf; border: 1px solid #f0abfc; }
-.status-offer { background: var(--color-success-50); color: var(--color-success-700); border: 1px solid var(--color-success-100); }
-.status-rejected { background: var(--color-danger-50); color: var(--color-danger-600); border: 1px solid var(--color-danger-100); }
-.status-withdrawn { background: var(--color-neutral-100); color: var(--color-neutral-500); border: 1px solid var(--color-neutral-200); }
-
-/* Sidebar */
-.sidebar-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: var(--radius-md);
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--color-neutral-600);
-  transition: all 0.12s ease;
-  cursor: pointer;
-  text-decoration: none;
-  width: 100%;
-}
-
-.sidebar-item:hover {
-  background: var(--color-neutral-100);
-  color: var(--color-neutral-900);
-}
-
-.sidebar-item.active {
-  background: var(--color-brand-50);
-  color: var(--color-brand-700);
-  font-weight: 600;
-}
-
-/* Button base */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-weight: 500;
-  font-size: 14px;
-  border-radius: var(--radius-md);
-  border: none;
-  cursor: pointer;
-  transition: all 0.12s ease;
-  white-space: nowrap;
-  text-decoration: none;
-  font-family: var(--font-sans);
-}
-
-.btn:active { transform: scale(0.98); }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.btn-sm { height: 32px; padding: 0 12px; font-size: 13px; }
-.btn-md { height: 38px; padding: 0 16px; }
-.btn-lg { height: 44px; padding: 0 24px; font-size: 15px; }
-
-.btn-primary { background: var(--color-brand-600); color: white; }
-.btn-primary:hover { background: var(--color-brand-700); }
-
-.btn-secondary { background: white; color: var(--color-neutral-700); border: 1px solid var(--color-neutral-200); }
-.btn-secondary:hover { background: var(--color-neutral-50); }
-
-.btn-ghost { background: transparent; color: var(--color-neutral-600); }
-.btn-ghost:hover { background: var(--color-neutral-100); color: var(--color-neutral-900); }
-
-.btn-danger { background: var(--color-danger-600); color: white; }
-.btn-danger:hover { background: var(--color-danger-700); }

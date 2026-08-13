@@ -1,27 +1,161 @@
 // CareerOS — Prisma Schema
-// PostgreSQL via Neon
+// PostgreSQL via Neon. Source of truth: docs/05_Backend_Schema.md
+//
+// Single-user deployment: every row still carries userId so the model stays
+// multi-user-capable, but the app resolves it to one seeded user (see lib/db/user.ts).
 
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
 }
 
-// ─── USERS ───────────────────────────────────────────────────────────────────
+// ─── ENUMS ───────────────────────────────────────────────────────────────────
+
+enum WorkType {
+  remote
+  hybrid
+  onsite
+}
+
+enum ApplicationStatus {
+  wishlist
+  preparing
+  applied
+  recruiter_screen
+  interview
+  final_round
+  offer
+  rejected
+  withdrawn
+}
+
+enum ApplicationMethod {
+  direct
+  linkedin
+  referral
+  recruiter
+  job_board
+  other
+}
+
+enum ApplicationOutcome {
+  hired
+  rejected
+  withdrew
+  ghosted
+}
+
+enum AnalysisStatus {
+  pending
+  processing
+  complete
+  failed
+}
+
+enum RequirementStatus {
+  strong
+  partial
+  missing
+}
+
+enum RecruiterVerdict {
+  strong
+  potential
+  weak
+}
+
+enum InterviewStage {
+  phone_screen
+  technical
+  case_study
+  panel
+  final
+  offer
+}
+
+enum InterviewOutcome {
+  passed
+  failed
+  pending
+  cancelled
+}
+
+enum TimelineEventType {
+  status_change
+  note_added
+  interview_scheduled
+  message_sent
+  follow_up_done
+  created
+  analysis_linked
+}
+
+enum RelationshipStatus {
+  not_contacted
+  connection_requested
+  connected
+  message_sent
+  replied
+  referral_requested
+  referral_received
+  interview_referral
+  follow_up_required
+}
+
+enum ReferralStatus {
+  none
+  requested
+  received
+}
+
+enum MessageType {
+  connection_request
+  after_connection
+  recruiter
+  hiring_manager
+  follow_up
+  other
+}
+
+enum MessageStatus {
+  draft
+  sent
+  replied
+  no_response
+}
+
+enum FollowUpType {
+  application
+  contact
+}
+
+enum FollowUpStatus {
+  pending
+  done
+  snoozed
+  rescheduled
+}
+
+// ─── USER ────────────────────────────────────────────────────────────────────
+
 model User {
-  id         String   @id @default(cuid())
-  email      String   @unique
-  name       String?
-  avatarUrl  String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  avatarUrl String?  @map("avatar_url")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   resumes          ResumeVersion[]
   jobDescriptions  JobDescription[]
   analyses         Analysis[]
   applications     Application[]
+  interviews       Interview[]
+  timelineEvents   TimelineEvent[]
   contacts         Contact[]
   messages         Message[]
   followUps        FollowUp[]
@@ -31,24 +165,30 @@ model User {
 }
 
 // ─── RESUME VERSIONS ─────────────────────────────────────────────────────────
+
 model ResumeVersion {
-  id              String   @id @default(cuid())
-  userId          String
+  id              String  @id @default(cuid())
+  userId          String  @map("user_id")
   name            String
-  targetRole      String?
-  targetIndustry  String?
-  isMaster        Boolean  @default(false)
-  versionNumber   Int      @default(1)
-  fileUrl         String
-  fileKey         String
-  extractedText   String?  @db.Text
+  targetRole      String? @map("target_role")
+  targetIndustry  String? @map("target_industry")
+  isMaster        Boolean @default(false) @map("is_master")
+  versionNumber   Int     @default(1) @map("version_number")
+
+  // Vercel Blob: url is public-read, pathname is the delete handle.
+  fileUrl         String  @map("file_url")
+  filePathname    String  @map("file_pathname")
+  fileSizeBytes   Int?    @map("file_size_bytes")
+
+  extractedText   String? @map("extracted_text")
   skills          String[]
-  experienceYears Int?
-  educationLevel  String?
-  summaryText     String?  @db.Text
+  experienceYears Int?    @map("experience_years")
+  educationLevel  String? @map("education_level")
+  summaryCurrent  String? @map("summary_current")
   notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   analyses         Analysis[]
@@ -56,241 +196,259 @@ model ResumeVersion {
   optimizedResumes OptimizedResume[]
 
   @@index([userId])
-  @@index([isMaster])
+  @@index([userId, isMaster])
+  @@index([userId, createdAt])
   @@map("resume_versions")
 }
 
 // ─── JOB DESCRIPTIONS ────────────────────────────────────────────────────────
+
 model JobDescription {
   id              String    @id @default(cuid())
-  userId          String
+  userId          String    @map("user_id")
   company         String
   role            String
   location        String?
   country         String?
-  workType        String?   // Remote | Hybrid | On-site
-  jobUrl          String?
-  salaryMin       Int?
-  salaryMax       Int?
-  salaryCurrency  String?   @default("EUR")
-  jdText          String    @db.Text
+  workType        WorkType? @map("work_type")
+  jobUrl          String?   @map("job_url")
+  salaryMin       Int?      @map("salary_min")
+  salaryMax       Int?      @map("salary_max")
+  salaryCurrency  String?   @default("EUR") @map("salary_currency")
+  jdText          String    @map("jd_text")
   industry        String?
-  roleCategory    String?
+  roleCategory    String?   @map("role_category")
   deadline        DateTime?
-  dateFound       DateTime  @default(now())
-  requiredSkills  String[]
-  preferredSkills String[]
+  dateFound       DateTime  @default(now()) @map("date_found")
+  requiredSkills  String[]  @map("required_skills")
+  preferredSkills String[]  @map("preferred_skills")
   notes           String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   analyses     Analysis[]
   applications Application[]
 
   @@index([userId])
-  @@index([company])
+  @@index([userId, company])
+  @@index([userId, dateFound])
   @@map("job_descriptions")
 }
 
 // ─── ANALYSES ────────────────────────────────────────────────────────────────
+// Written incrementally by the staged pipeline (lib/ai/pipeline.ts).
+// Every result column is nullable until the stage that produces it completes.
+
 model Analysis {
-  id                    String   @id @default(cuid())
-  userId                String
-  resumeVersionId       String
-  jobDescriptionId      String
+  id               String @id @default(cuid())
+  userId           String @map("user_id")
+  resumeVersionId  String @map("resume_version_id")
+  jobDescriptionId String @map("job_description_id")
 
-  // Overall
-  overallScore          Int      @default(0)
+  // Pipeline control
+  status     AnalysisStatus @default(pending)
+  stage      Int            @default(0)
+  stageError String?        @map("stage_error")
 
-  // Sub-scores
-  experienceScore       Int      @default(0)
-  skillsScore           Int      @default(0)
-  keywordAtsScore       Int      @default(0)
-  responsibilityScore   Int      @default(0)
-  industryScore         Int      @default(0)
-  seniorityScore        Int      @default(0)
-  educationScore        Int      @default(0)
-  quantificationScore   Int      @default(0)
-  recruiterReadability  Int      @default(0)
-  overallRecruiterAppeal Int     @default(0)
+  // Overall + sub-scores (stage: score)
+  overallScore           Int? @map("overall_score")
+  experienceScore        Int? @map("experience_score")
+  skillsScore            Int? @map("skills_score")
+  keywordAtsScore        Int? @map("keyword_ats_score")
+  responsibilityScore    Int? @map("responsibility_score")
+  industryScore          Int? @map("industry_score")
+  seniorityScore         Int? @map("seniority_score")
+  educationScore         Int? @map("education_score")
+  quantificationScore    Int? @map("quantification_score")
+  recruiterReadability   Int? @map("recruiter_readability")
+  overallRecruiterAppeal Int? @map("overall_recruiter_appeal")
 
-  // JD extraction (JSON)
-  mustHaveRequirements  Json?
-  niceToHaveRequirements Json?
-  responsibilities      Json?
-  softSkills            Json?
-  educationRequirements Json?
-  experienceRequirements Json?
+  // JD extraction (stage: extract)
+  mustHaveRequirements    Json? @map("must_have_requirements")
+  niceToHaveRequirements  Json? @map("nice_to_have_requirements")
+  responsibilities        Json?
+  softSkills              Json? @map("soft_skills")
+  educationRequirements   Json? @map("education_requirements")
+  experienceRequirements  Json? @map("experience_requirements")
 
-  // Gap analysis
-  gaps                  Json?
+  // Gap analysis (stage: gaps)
+  gaps Json?
 
-  // Bullet analysis
-  bulletAnalysis        Json?
+  // Bullet analysis (stage: bullets)
+  bulletAnalysis Json? @map("bullet_analysis")
 
-  // Keywords
-  keywordsPresent       String[]
-  keywordsMissing       String[]
-  keywordsOverused      String[]
+  // Keywords (stage: keywords)
+  keywordsPresent  String[] @map("keywords_present")
+  keywordsMissing  String[] @map("keywords_missing")
+  keywordsOverused String[] @map("keywords_overused")
 
-  // ATS
-  atsScore              Int      @default(0)
-  atsIssues             Json?
+  // ATS (stage: ats)
+  atsScore  Int?  @map("ats_score")
+  atsIssues Json? @map("ats_issues")
 
-  // Recruiter test
-  recruiterVerdict      String?  // strong | potential | weak
-  recruiterVerdictReason String? @db.Text
-  recruiterAnswers      Json?
+  // Recruiter 10-second test (stage: recruiter)
+  recruiterVerdict       RecruiterVerdict? @map("recruiter_verdict")
+  recruiterVerdictReason String?           @map("recruiter_verdict_reason")
+  recruiterAnswers       Json?             @map("recruiter_answers")
 
-  // Action plan
-  actionPlan            Json?
+  // Action plan (stage: action_plan)
+  actionPlan Json? @map("action_plan")
 
-  // Summary
-  currentSummary        String?  @db.Text
-  recommendedSummary    String?  @db.Text
-  summaryWhyBetter      String?  @db.Text
+  // Summary (stage: summary)
+  currentSummary     String? @map("current_summary")
+  recommendedSummary String? @map("recommended_summary")
+  summaryWhyBetter   String? @map("summary_why_better")
 
-  // Status
-  status                String   @default("pending") // pending | processing | complete | failed
-  processingError       String?
-
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   resumeVersion    ResumeVersion     @relation(fields: [resumeVersionId], references: [id], onDelete: Cascade)
   jobDescription   JobDescription    @relation(fields: [jobDescriptionId], references: [id], onDelete: Cascade)
-  optimizedResumes OptimizedResume[]
   applications     Application[]
+  optimizedResumes OptimizedResume[]
 
   @@index([userId])
+  @@index([userId, createdAt])
   @@index([resumeVersionId])
   @@index([jobDescriptionId])
   @@map("analyses")
 }
 
-// ─── APPLICATIONS ─────────────────────────────────────────────────────────────
+// ─── APPLICATIONS ────────────────────────────────────────────────────────────
+
 model Application {
-  id                    String    @id @default(cuid())
-  userId                String
-  jobDescriptionId      String?
-  resumeVersionId       String?
-  analysisId            String?
-  contactId             String?
+  id               String  @id @default(cuid())
+  userId           String  @map("user_id")
+  jobDescriptionId String? @map("job_description_id")
+  resumeVersionId  String? @map("resume_version_id")
+  analysisId       String? @map("analysis_id")
 
   // Job info
-  company               String
-  role                  String
-  location              String?
-  country               String?
-  workType              String?
-  salaryMin             Int?
-  salaryMax             Int?
-  salaryCurrency        String?   @default("EUR")
-  jobUrl                String?
-  jdSnapshot            String?   @db.Text
+  company        String
+  role           String
+  location       String?
+  country        String?
+  workType       WorkType? @map("work_type")
+  salaryMin      Int?      @map("salary_min")
+  salaryMax      Int?      @map("salary_max")
+  salaryCurrency String?   @default("EUR") @map("salary_currency")
+  jobUrl         String?   @map("job_url")
+  jdSnapshot     String?   @map("jd_snapshot")
 
   // Application info
-  status                String    @default("applied")
-  applicationDate       DateTime?
-  applicationMethod     String?
-  coverLetterUsed       Boolean   @default(false)
-  referralPerson        String?
+  status            ApplicationStatus  @default(applied)
+  applicationDate   DateTime?          @map("application_date")
+  applicationMethod ApplicationMethod? @map("application_method")
+  coverLetterUsed   Boolean            @default(false) @map("cover_letter_used")
+  referralPerson    String?            @map("referral_person")
 
   // Contacts
-  recruiterName         String?
-  recruiterLinkedin     String?
-  recruiterEmail        String?
-  hiringManagerName     String?
-  hiringManagerLinkedin String?
+  recruiterName         String? @map("recruiter_name")
+  recruiterLinkedin     String? @map("recruiter_linkedin")
+  recruiterEmail        String? @map("recruiter_email")
+  hiringManagerName     String? @map("hiring_manager_name")
+  hiringManagerLinkedin String? @map("hiring_manager_linkedin")
+  contactId             String? @map("contact_id")
 
   // Tracking
-  matchScore            Int?
-  nextFollowupDate      DateTime?
-  rejectionReason       String?
-  outcome               String?
+  matchScore       Int?                @map("match_score")
+  nextFollowupDate DateTime?           @map("next_followup_date")
+  rejectionReason  String?             @map("rejection_reason")
+  outcome          ApplicationOutcome?
 
-  // Notes
-  notes                 String?   @db.Text
+  notes String?
 
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  jobDescription JobDescription?  @relation(fields: [jobDescriptionId], references: [id])
-  resumeVersion  ResumeVersion?   @relation(fields: [resumeVersionId], references: [id])
-  analysis       Analysis?        @relation(fields: [analysisId], references: [id])
-  contact        Contact?         @relation(fields: [contactId], references: [id])
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobDescription JobDescription? @relation(fields: [jobDescriptionId], references: [id], onDelete: SetNull)
+  resumeVersion  ResumeVersion?  @relation(fields: [resumeVersionId], references: [id], onDelete: SetNull)
+  analysis       Analysis?       @relation(fields: [analysisId], references: [id], onDelete: SetNull)
+  contact        Contact?        @relation(fields: [contactId], references: [id], onDelete: SetNull)
   interviews     Interview[]
   timelineEvents TimelineEvent[]
   messages       Message[]
   followUps      FollowUp[]
 
   @@index([userId])
-  @@index([status])
-  @@index([nextFollowupDate])
+  @@index([userId, status])
+  @@index([userId, company])
+  @@index([userId, applicationDate])
+  @@index([userId, nextFollowupDate])
   @@map("applications")
 }
 
-// ─── INTERVIEWS ───────────────────────────────────────────────────────────────
-model Interview {
-  id            String    @id @default(cuid())
-  userId        String
-  applicationId String
-  stage         String    // phone_screen | technical | case_study | panel | final | offer
-  scheduledAt   DateTime?
-  durationMins  Int?
-  format        String?   // Video | Phone | In-person
-  interviewers  String[]
-  notes         String?   @db.Text
-  outcome       String?   // passed | failed | pending | cancelled
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+// ─── INTERVIEWS ──────────────────────────────────────────────────────────────
 
+model Interview {
+  id            String            @id @default(cuid())
+  userId        String            @map("user_id")
+  applicationId String            @map("application_id")
+  stage         InterviewStage
+  scheduledAt   DateTime?         @map("scheduled_at")
+  durationMins  Int?              @map("duration_mins")
+  format        String?
+  interviewers  String[]
+  notes         String?
+  outcome       InterviewOutcome? @default(pending)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@index([applicationId])
   @@map("interviews")
 }
 
-// ─── TIMELINE EVENTS ──────────────────────────────────────────────────────────
-model TimelineEvent {
-  id            String   @id @default(cuid())
-  userId        String
-  applicationId String
-  eventType     String   // status_change | note_added | interview_scheduled | message_sent | follow_up_done
-  description   String
-  oldValue      String?
-  newValue      String?
-  createdAt     DateTime @default(now())
+// ─── TIMELINE EVENTS ─────────────────────────────────────────────────────────
 
+model TimelineEvent {
+  id            String            @id @default(cuid())
+  userId        String            @map("user_id")
+  applicationId String            @map("application_id")
+  eventType     TimelineEventType @map("event_type")
+  description   String
+  oldValue      String?           @map("old_value")
+  newValue      String?           @map("new_value")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
 
-  @@index([applicationId])
+  @@index([applicationId, createdAt])
   @@map("timeline_events")
 }
 
-// ─── CONTACTS ─────────────────────────────────────────────────────────────────
+// ─── CONTACTS ────────────────────────────────────────────────────────────────
+
 model Contact {
-  id                 String    @id @default(cuid())
-  userId             String
+  id                 String             @id @default(cuid())
+  userId             String             @map("user_id")
   name               String
   company            String?
   position           String?
-  linkedinUrl        String?
+  linkedinUrl        String?            @map("linkedin_url")
   email              String?
   location           String?
-  relationshipStatus String    @default("not_contacted")
-  howMet             String?
-  targetCompany      String?
-  targetRole         String?
-  lastContactedAt    DateTime?
-  nextFollowupDate   DateTime?
-  referralStatus     String?   @default("none")
-  notes              String?   @db.Text
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  relationshipStatus RelationshipStatus @default(not_contacted) @map("relationship_status")
+  howMet             String?            @map("how_met")
+  targetCompany      String?            @map("target_company")
+  targetRole         String?            @map("target_role")
+  lastContactedAt    DateTime?          @map("last_contacted_at")
+  nextFollowupDate   DateTime?          @map("next_followup_date")
+  referralStatus     ReferralStatus?    @default(none) @map("referral_status")
+  notes              String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages     Message[]
@@ -298,77 +456,86 @@ model Contact {
   applications Application[]
 
   @@index([userId])
-  @@index([relationshipStatus])
-  @@index([nextFollowupDate])
+  @@index([userId, relationshipStatus])
+  @@index([userId, nextFollowupDate])
   @@map("contacts")
 }
 
-// ─── MESSAGES ─────────────────────────────────────────────────────────────────
+// ─── MESSAGES ────────────────────────────────────────────────────────────────
+
 model Message {
-  id            String    @id @default(cuid())
-  userId        String
-  contactId     String?
-  applicationId String?
-  type          String    // connection_request | after_connection | recruiter | hiring_manager | follow_up | other
-  platform      String?   // LinkedIn | Email | Other
-  content       String    @db.Text
-  sentAt        DateTime?
-  status        String    @default("draft") // draft | sent | replied | no_response
-  aiGenerated   Boolean   @default(true)
-  contextUsed   Json?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id            String        @id @default(cuid())
+  userId        String        @map("user_id")
+  contactId     String?       @map("contact_id")
+  applicationId String?       @map("application_id")
+  type          MessageType
+  platform      String?
+  content       String
+  sentAt        DateTime?     @map("sent_at")
+  status        MessageStatus @default(draft)
+  aiGenerated   Boolean       @default(true) @map("ai_generated")
+  contextUsed   Json?         @map("context_used")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  contact     Contact?     @relation(fields: [contactId], references: [id])
-  application Application? @relation(fields: [applicationId], references: [id])
+  contact     Contact?     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  application Application? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([contactId])
+  @@index([applicationId])
   @@map("messages")
 }
 
-// ─── FOLLOW UPS ───────────────────────────────────────────────────────────────
+// ─── FOLLOW-UPS ──────────────────────────────────────────────────────────────
+
 model FollowUp {
-  id            String    @id @default(cuid())
-  userId        String
-  type          String    // application | contact
-  applicationId String?
-  contactId     String?
-  dueDate       DateTime
-  status        String    @default("pending") // pending | done | snoozed | rescheduled
+  id            String         @id @default(cuid())
+  userId        String         @map("user_id")
+  type          FollowUpType
+  applicationId String?        @map("application_id")
+  contactId     String?        @map("contact_id")
+  dueDate       DateTime       @map("due_date")
+  status        FollowUpStatus @default(pending)
   note          String?
-  completedAt   DateTime?
-  snoozedUntil  DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  completedAt   DateTime?      @map("completed_at")
+  snoozedUntil  DateTime?      @map("snoozed_until")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  application Application? @relation(fields: [applicationId], references: [id])
-  contact     Contact?     @relation(fields: [contactId], references: [id])
+  application Application? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  contact     Contact?     @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
   @@index([userId])
-  @@index([status])
-  @@index([dueDate])
+  @@index([userId, status, dueDate])
   @@map("follow_ups")
 }
 
-// ─── OPTIMIZED RESUMES ────────────────────────────────────────────────────────
+// ─── OPTIMIZED RESUMES ───────────────────────────────────────────────────────
+
 model OptimizedResume {
-  id              String   @id @default(cuid())
-  userId          String
-  analysisId      String
-  resumeVersionId String
+  id              String  @id @default(cuid())
+  userId          String  @map("user_id")
+  analysisId      String  @map("analysis_id")
+  resumeVersionId String  @map("resume_version_id")
   name            String
-  content         String   @db.Text
-  pdfUrl          String?
-  docxUrl         String?
-  createdAt       DateTime @default(now())
+  content         Json
+  pdfUrl          String? @map("pdf_url")
+  pdfPathname     String? @map("pdf_pathname")
+  docxUrl         String? @map("docx_url")
+  docxPathname    String? @map("docx_pathname")
+
+  createdAt DateTime @default(now()) @map("created_at")
 
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   analysis      Analysis      @relation(fields: [analysisId], references: [id], onDelete: Cascade)
-  resumeVersion ResumeVersion @relation(fields: [resumeVersionId], references: [id])
+  resumeVersion ResumeVersion @relation(fields: [resumeVersionId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([analysisId])
   @@map("optimized_resumes")
 }
