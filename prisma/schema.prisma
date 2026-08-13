@@ -1,0 +1,374 @@
+// CareerOS — Prisma Schema
+// PostgreSQL via Neon
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── USERS ───────────────────────────────────────────────────────────────────
+model User {
+  id         String   @id @default(cuid())
+  email      String   @unique
+  name       String?
+  avatarUrl  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  resumes          ResumeVersion[]
+  jobDescriptions  JobDescription[]
+  analyses         Analysis[]
+  applications     Application[]
+  contacts         Contact[]
+  messages         Message[]
+  followUps        FollowUp[]
+  optimizedResumes OptimizedResume[]
+
+  @@map("users")
+}
+
+// ─── RESUME VERSIONS ─────────────────────────────────────────────────────────
+model ResumeVersion {
+  id              String   @id @default(cuid())
+  userId          String
+  name            String
+  targetRole      String?
+  targetIndustry  String?
+  isMaster        Boolean  @default(false)
+  versionNumber   Int      @default(1)
+  fileUrl         String
+  fileKey         String
+  extractedText   String?  @db.Text
+  skills          String[]
+  experienceYears Int?
+  educationLevel  String?
+  summaryText     String?  @db.Text
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analyses         Analysis[]
+  applications     Application[]
+  optimizedResumes OptimizedResume[]
+
+  @@index([userId])
+  @@index([isMaster])
+  @@map("resume_versions")
+}
+
+// ─── JOB DESCRIPTIONS ────────────────────────────────────────────────────────
+model JobDescription {
+  id              String    @id @default(cuid())
+  userId          String
+  company         String
+  role            String
+  location        String?
+  country         String?
+  workType        String?   // Remote | Hybrid | On-site
+  jobUrl          String?
+  salaryMin       Int?
+  salaryMax       Int?
+  salaryCurrency  String?   @default("EUR")
+  jdText          String    @db.Text
+  industry        String?
+  roleCategory    String?
+  deadline        DateTime?
+  dateFound       DateTime  @default(now())
+  requiredSkills  String[]
+  preferredSkills String[]
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analyses     Analysis[]
+  applications Application[]
+
+  @@index([userId])
+  @@index([company])
+  @@map("job_descriptions")
+}
+
+// ─── ANALYSES ────────────────────────────────────────────────────────────────
+model Analysis {
+  id                    String   @id @default(cuid())
+  userId                String
+  resumeVersionId       String
+  jobDescriptionId      String
+
+  // Overall
+  overallScore          Int      @default(0)
+
+  // Sub-scores
+  experienceScore       Int      @default(0)
+  skillsScore           Int      @default(0)
+  keywordAtsScore       Int      @default(0)
+  responsibilityScore   Int      @default(0)
+  industryScore         Int      @default(0)
+  seniorityScore        Int      @default(0)
+  educationScore        Int      @default(0)
+  quantificationScore   Int      @default(0)
+  recruiterReadability  Int      @default(0)
+  overallRecruiterAppeal Int     @default(0)
+
+  // JD extraction (JSON)
+  mustHaveRequirements  Json?
+  niceToHaveRequirements Json?
+  responsibilities      Json?
+  softSkills            Json?
+  educationRequirements Json?
+  experienceRequirements Json?
+
+  // Gap analysis
+  gaps                  Json?
+
+  // Bullet analysis
+  bulletAnalysis        Json?
+
+  // Keywords
+  keywordsPresent       String[]
+  keywordsMissing       String[]
+  keywordsOverused      String[]
+
+  // ATS
+  atsScore              Int      @default(0)
+  atsIssues             Json?
+
+  // Recruiter test
+  recruiterVerdict      String?  // strong | potential | weak
+  recruiterVerdictReason String? @db.Text
+  recruiterAnswers      Json?
+
+  // Action plan
+  actionPlan            Json?
+
+  // Summary
+  currentSummary        String?  @db.Text
+  recommendedSummary    String?  @db.Text
+  summaryWhyBetter      String?  @db.Text
+
+  // Status
+  status                String   @default("pending") // pending | processing | complete | failed
+  processingError       String?
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resumeVersion    ResumeVersion     @relation(fields: [resumeVersionId], references: [id], onDelete: Cascade)
+  jobDescription   JobDescription    @relation(fields: [jobDescriptionId], references: [id], onDelete: Cascade)
+  optimizedResumes OptimizedResume[]
+  applications     Application[]
+
+  @@index([userId])
+  @@index([resumeVersionId])
+  @@index([jobDescriptionId])
+  @@map("analyses")
+}
+
+// ─── APPLICATIONS ─────────────────────────────────────────────────────────────
+model Application {
+  id                    String    @id @default(cuid())
+  userId                String
+  jobDescriptionId      String?
+  resumeVersionId       String?
+  analysisId            String?
+  contactId             String?
+
+  // Job info
+  company               String
+  role                  String
+  location              String?
+  country               String?
+  workType              String?
+  salaryMin             Int?
+  salaryMax             Int?
+  salaryCurrency        String?   @default("EUR")
+  jobUrl                String?
+  jdSnapshot            String?   @db.Text
+
+  // Application info
+  status                String    @default("applied")
+  applicationDate       DateTime?
+  applicationMethod     String?
+  coverLetterUsed       Boolean   @default(false)
+  referralPerson        String?
+
+  // Contacts
+  recruiterName         String?
+  recruiterLinkedin     String?
+  recruiterEmail        String?
+  hiringManagerName     String?
+  hiringManagerLinkedin String?
+
+  // Tracking
+  matchScore            Int?
+  nextFollowupDate      DateTime?
+  rejectionReason       String?
+  outcome               String?
+
+  // Notes
+  notes                 String?   @db.Text
+
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobDescription JobDescription?  @relation(fields: [jobDescriptionId], references: [id])
+  resumeVersion  ResumeVersion?   @relation(fields: [resumeVersionId], references: [id])
+  analysis       Analysis?        @relation(fields: [analysisId], references: [id])
+  contact        Contact?         @relation(fields: [contactId], references: [id])
+  interviews     Interview[]
+  timelineEvents TimelineEvent[]
+  messages       Message[]
+  followUps      FollowUp[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([nextFollowupDate])
+  @@map("applications")
+}
+
+// ─── INTERVIEWS ───────────────────────────────────────────────────────────────
+model Interview {
+  id            String    @id @default(cuid())
+  userId        String
+  applicationId String
+  stage         String    // phone_screen | technical | case_study | panel | final | offer
+  scheduledAt   DateTime?
+  durationMins  Int?
+  format        String?   // Video | Phone | In-person
+  interviewers  String[]
+  notes         String?   @db.Text
+  outcome       String?   // passed | failed | pending | cancelled
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@map("interviews")
+}
+
+// ─── TIMELINE EVENTS ──────────────────────────────────────────────────────────
+model TimelineEvent {
+  id            String   @id @default(cuid())
+  userId        String
+  applicationId String
+  eventType     String   // status_change | note_added | interview_scheduled | message_sent | follow_up_done
+  description   String
+  oldValue      String?
+  newValue      String?
+  createdAt     DateTime @default(now())
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@map("timeline_events")
+}
+
+// ─── CONTACTS ─────────────────────────────────────────────────────────────────
+model Contact {
+  id                 String    @id @default(cuid())
+  userId             String
+  name               String
+  company            String?
+  position           String?
+  linkedinUrl        String?
+  email              String?
+  location           String?
+  relationshipStatus String    @default("not_contacted")
+  howMet             String?
+  targetCompany      String?
+  targetRole         String?
+  lastContactedAt    DateTime?
+  nextFollowupDate   DateTime?
+  referralStatus     String?   @default("none")
+  notes              String?   @db.Text
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages     Message[]
+  followUps    FollowUp[]
+  applications Application[]
+
+  @@index([userId])
+  @@index([relationshipStatus])
+  @@index([nextFollowupDate])
+  @@map("contacts")
+}
+
+// ─── MESSAGES ─────────────────────────────────────────────────────────────────
+model Message {
+  id            String    @id @default(cuid())
+  userId        String
+  contactId     String?
+  applicationId String?
+  type          String    // connection_request | after_connection | recruiter | hiring_manager | follow_up | other
+  platform      String?   // LinkedIn | Email | Other
+  content       String    @db.Text
+  sentAt        DateTime?
+  status        String    @default("draft") // draft | sent | replied | no_response
+  aiGenerated   Boolean   @default(true)
+  contextUsed   Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contact     Contact?     @relation(fields: [contactId], references: [id])
+  application Application? @relation(fields: [applicationId], references: [id])
+
+  @@index([userId])
+  @@index([contactId])
+  @@map("messages")
+}
+
+// ─── FOLLOW UPS ───────────────────────────────────────────────────────────────
+model FollowUp {
+  id            String    @id @default(cuid())
+  userId        String
+  type          String    // application | contact
+  applicationId String?
+  contactId     String?
+  dueDate       DateTime
+  status        String    @default("pending") // pending | done | snoozed | rescheduled
+  note          String?
+  completedAt   DateTime?
+  snoozedUntil  DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  application Application? @relation(fields: [applicationId], references: [id])
+  contact     Contact?     @relation(fields: [contactId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([dueDate])
+  @@map("follow_ups")
+}
+
+// ─── OPTIMIZED RESUMES ────────────────────────────────────────────────────────
+model OptimizedResume {
+  id              String   @id @default(cuid())
+  userId          String
+  analysisId      String
+  resumeVersionId String
+  name            String
+  content         String   @db.Text
+  pdfUrl          String?
+  docxUrl         String?
+  createdAt       DateTime @default(now())
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analysis      Analysis      @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  resumeVersion ResumeVersion @relation(fields: [resumeVersionId], references: [id])
+
+  @@index([userId])
+  @@map("optimized_resumes")
+}
