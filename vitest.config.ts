@@ -10,6 +10,9 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname),
+      // `server-only` throws on import outside an RSC graph. Its guarantee is a
+      // build-time concern; under test it just needs to be inert.
+      "server-only": path.resolve(import.meta.dirname, "test/stubs/server-only.ts"),
     },
   },
 });
