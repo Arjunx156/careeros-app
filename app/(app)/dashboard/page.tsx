@@ -3,6 +3,9 @@ import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getDashboardSummary } from "@/lib/analytics/summary";
+import { getGroupedFollowUps } from "@/lib/follow-ups/query";
+import { FollowUpGroup, type FollowUpRow } from "@/components/follow-ups/follow-up-list";
+import Link from "next/link";
 
 export const metadata = { title: "Dashboard" };
 
@@ -11,7 +14,10 @@ export const metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const summary = await getDashboardSummary();
+  const [summary, followUps] = await Promise.all([
+    getDashboardSummary(),
+    getGroupedFollowUps(8),
+  ]);
 
   const hasData = summary.totalApplications > 0 || summary.resumeCount > 0;
 
@@ -112,9 +118,42 @@ export default async function DashboardPage() {
             </div>
           </section>
 
+          {followUps.total > 0 ? (
+            <section className="card p-5" aria-labelledby="followups-heading">
+              <div className="flex items-center justify-between gap-3">
+                <h2 id="followups-heading" className="text-section text-ink">
+                  Follow-ups
+                </h2>
+                <Link
+                  href="/follow-ups"
+                  className="text-label font-medium text-brand-600 hover:underline"
+                >
+                  View all
+                </Link>
+              </div>
+
+              <div className="mt-4 space-y-5">
+                <FollowUpGroup
+                  group="overdue"
+                  items={followUps.overdue as FollowUpRow[]}
+                  compact
+                />
+                <FollowUpGroup
+                  group="thisWeek"
+                  items={followUps.thisWeek as FollowUpRow[]}
+                  compact
+                />
+                <FollowUpGroup
+                  group="upcoming"
+                  items={followUps.upcoming as FollowUpRow[]}
+                  compact
+                />
+              </div>
+            </section>
+          ) : null}
+
           <p className="text-label text-ink-muted">
-            Charts, the follow-up widget, and the activity feed arrive with the
-            analytics phase.
+            Charts and the activity feed arrive with the analytics phase.
           </p>
         </div>
       ) : (
