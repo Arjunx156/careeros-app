@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 import { RotateCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { STAGE_LABELS_CLIENT } from "@/lib/analysis/stage-labels";
+import { runPipeline } from "@/lib/analysis/advance-client";
+import {
+  STAGE_LABELS_CLIENT,
+  TOTAL_STAGES_CLIENT,
+} from "@/lib/analysis/stage-labels";
 
 /**
  * Resumes a partially-complete analysis from where it stopped.
@@ -26,39 +30,28 @@ export function ResumeAnalysisResume({
 
   async function resume() {
     setIsRunning(true);
-    let stage = fromStage;
 
-    try {
-      while (stage < STAGE_LABELS_CLIENT.length) {
-        setLabel(STAGE_LABELS_CLIENT[stage] ?? null);
+    const result = await runPipeline({
+      analysisId,
+      fromStage,
+      totalStages: TOTAL_STAGES_CLIENT,
+      onStage: (stage, attempt) => {
+        const base = STAGE_LABELS_CLIENT[stage] ?? "Working";
+        setLabel(attempt > 0 ? `${base} (retry ${attempt})` : base);
+      },
+    });
 
-        const response = await fetch(`/api/analyses/${analysisId}/advance`, {
-          method: "POST",
-        });
-        const payload = (await response.json().catch(() => ({}))) as {
-          ok?: boolean;
-          error?: string;
-          data?: { stage: number; done: boolean };
-        };
+    setIsRunning(false);
+    setLabel(null);
 
-        if (!response.ok || !payload.ok || !payload.data) {
-          toast.error(payload.error ?? "That step failed again.");
-          return;
-        }
-
-        stage = payload.data.stage;
-        if (payload.data.done) {
-          toast.success("Analysis complete.");
-          router.refresh();
-          return;
-        }
-      }
-    } catch {
-      toast.error("Connection error. Please try again.");
-    } finally {
-      setIsRunning(false);
-      setLabel(null);
+    if (result.status === "done") {
+      toast.success("Analysis complete.");
+    } else {
+      toast.error(result.message);
     }
+
+    // Refresh either way — a failed run still advanced through earlier stages.
+    router.refresh();
   }
 
   return (

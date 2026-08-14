@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { apiError, apiSuccess, handleRoute } from "@/lib/api/response";
-import { AiNotConfiguredError } from "@/lib/ai/gemini";
+import { describeStageError } from "@/lib/api/errors";
 import { STAGES, TOTAL_STAGES, type StageContext } from "@/lib/ai/pipeline";
 import { prisma } from "@/lib/db/prisma";
 import { getOwnerId } from "@/lib/db/user";
@@ -99,21 +99,24 @@ export async function POST(
         status: isDone ? ("complete" as const) : ("processing" as const),
       });
     } catch (error) {
-      const message =
-        error instanceof AiNotConfiguredError
-          ? error.message
-          : error instanceof Error
-            ? error.message
-            : "The analysis step failed.";
+      const message = describeStageError(error);
+
+      console.error(`[analysis:${id}] stage "${stage.key}" failed:`, error);
 
       // Record the failure but leave `stage` untouched, so retrying re-runs
       // only this step rather than restarting the whole analysis.
-      await prisma.analysis.update({
-        where: { id },
-        data: { status: "failed", stageError: message },
-      });
+      //
+      // This write is isolated: when the cause is the database itself, letting
+      // it throw would replace the real diagnosis with a generic 500.
+      try {
+        await prisma.analysis.update({
+          where: { id },
+          data: { status: "failed", stageError: message },
+        });
+      } catch (writeError) {
+        console.error(`[analysis:${id}] could not record failure:`, writeError);
+      }
 
-      console.error(`[analysis:${id}] stage "${stage.key}" failed:`, error);
       return apiError(message, 502);
     }
   });

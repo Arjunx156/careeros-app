@@ -6,6 +6,7 @@ import { Check, Loader2, Microscope, RotateCw, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Field, Select, TextArea, TextInput } from "@/components/ui/field";
+import { runPipeline } from "@/lib/analysis/advance-client";
 import { cn } from "@/lib/utils";
 
 type ResumeOption = {
@@ -53,58 +54,39 @@ export function AnalyzerForm({
    */
   const advance = useCallback(
     async (analysisId: string, startStage: number) => {
-      let stage = startStage;
-
-      while (stage < totalStages) {
-        if (abortRef.current) return;
-
-        setRun({
-          phase: "running",
-          analysisId,
-          stage,
-          label: stageLabels[stage] ?? "Working",
-        });
-
-        let response: Response;
-        try {
-          response = await fetch(`/api/analyses/${analysisId}/advance`, {
-            method: "POST",
-          });
-        } catch {
+      const result = await runPipeline({
+        analysisId,
+        fromStage: startStage,
+        totalStages,
+        onStage: (stage, attempt) => {
+          if (abortRef.current) return;
+          const base = stageLabels[stage] ?? "Working";
           setRun({
-            phase: "failed",
+            phase: "running",
             analysisId,
             stage,
-            error: "Connection error. Check your internet and retry.",
+            // Surface retries rather than appearing frozen — a backed-off retry
+            // can sit for several seconds.
+            label: attempt > 0 ? `${base} — retrying (${attempt}/3)` : base,
           });
-          return;
-        }
+        },
+      });
 
-        const payload = (await response.json().catch(() => ({}))) as {
-          ok?: boolean;
-          error?: string;
-          data?: { stage: number; done: boolean };
-        };
+      if (abortRef.current) return;
 
-        if (!response.ok || !payload.ok || !payload.data) {
-          setRun({
-            phase: "failed",
-            analysisId,
-            stage,
-            error: payload.error ?? "That step failed.",
-          });
-          return;
-        }
-
-        stage = payload.data.stage;
-
-        if (payload.data.done) {
-          toast.success("Analysis complete.");
-          router.push(`/job-analyzer/${analysisId}`);
-          router.refresh();
-          return;
-        }
+      if (result.status === "done") {
+        toast.success("Analysis complete.");
+        router.push(`/job-analyzer/${analysisId}`);
+        router.refresh();
+        return;
       }
+
+      setRun({
+        phase: "failed",
+        analysisId,
+        stage: result.stage,
+        error: result.message,
+      });
     },
     [router, stageLabels, totalStages],
   );

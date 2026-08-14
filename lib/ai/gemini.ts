@@ -16,15 +16,92 @@ import type { z } from "zod";
  */
 export type ModelTier = "deep" | "fast";
 
-const DEFAULT_MODELS: Record<ModelTier, string> = {
-  deep: "gemini-3.7-flash",
-  fast: "gemini-3.1-flash-lite",
+/**
+ * Model pools, strongest first.
+ *
+ * The free tier grants 20 requests per day *per model* — a nine-stage analysis
+ * against a single model exhausts it in two runs. Because the quota is
+ * per-model, falling through to the next model on exhaustion multiplies the
+ * daily budget by the size of the pool rather than blocking the user.
+ *
+ * Ordering is deliberate: the deep tier leads with the most capable models,
+ * and the fast tier leads with the cheapest, but both can fall back into the
+ * other's models rather than fail outright.
+ */
+const MODEL_POOLS: Record<ModelTier, readonly string[]> = {
+  deep: [
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite",
+  ],
+  fast: [
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash-lite",
+    "gemini-3-flash-preview",
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
+  ],
 };
 
+/**
+ * Models known to be out of quota, and when they become usable again.
+ *
+ * Kept on globalThis so dev hot-reload does not forget and immediately burn a
+ * request rediscovering the same exhaustion.
+ */
+const globalForQuota = globalThis as unknown as {
+  exhaustedModels: Map<string, number> | undefined;
+};
+
+function exhausted(): Map<string, number> {
+  globalForQuota.exhaustedModels ??= new Map();
+  return globalForQuota.exhaustedModels;
+}
+
+function isExhausted(model: string): boolean {
+  const until = exhausted().get(model);
+  if (until === undefined) return false;
+  if (Date.now() >= until) {
+    exhausted().delete(model);
+    return false;
+  }
+  return true;
+}
+
+/** Google tells us when to come back; honour it, or assume the daily window. */
+function markExhausted(model: string, message: string): void {
+  const retryMatch = message.match(/retry in ([\d.]+)s/i);
+  const retryMs = retryMatch ? Number(retryMatch[1]) * 1000 : NaN;
+
+  const backoff =
+    Number.isFinite(retryMs) && retryMs > 0
+      ? Math.max(retryMs, 60_000)
+      : 60 * 60 * 1000;
+
+  exhausted().set(model, Date.now() + backoff);
+}
+
+/** Candidate models for a tier: env override first, then the pool, minus exhausted. */
+export function modelsFor(tier: ModelTier): string[] {
+  const override = (
+    tier === "deep" ? process.env.GEMINI_MODEL_PRO : process.env.GEMINI_MODEL_FLASH
+  )?.trim();
+
+  const ordered = override
+    ? [override, ...MODEL_POOLS[tier].filter((m) => m !== override)]
+    : [...MODEL_POOLS[tier]];
+
+  const usable = ordered.filter((model) => !isExhausted(model));
+
+  // If everything is rate-limited, still try the preferred model so the caller
+  // gets a real quota error rather than a confusing "no models" failure.
+  return usable.length > 0 ? usable : [ordered[0]];
+}
+
 export function modelFor(tier: ModelTier): string {
-  const configured =
-    tier === "deep" ? process.env.GEMINI_MODEL_PRO : process.env.GEMINI_MODEL_FLASH;
-  return configured?.trim() || DEFAULT_MODELS[tier];
+  return modelsFor(tier)[0];
 }
 
 export class AiNotConfiguredError extends Error {
@@ -67,10 +144,25 @@ function unwrapJson(text: string): string {
   return (fenced?.[1] ?? trimmed).trim();
 }
 
+/**
+ * Quota errors must NOT be retried here.
+ *
+ * The client also retries, so a server-side retry multiplies out: 3 attempts
+ * here × 4 there = 12 requests for a single stage. Against the free tier's
+ * per-minute budget that is what *causes* the rate limit rather than surviving
+ * it. Quota errors need tens of seconds, which belongs in the client's backoff,
+ * not in a tight server loop.
+ */
+function isQuotaError(message: string): boolean {
+  return /exceeded your current quota|RESOURCE_EXHAUSTED|\b429\b/i.test(message);
+}
+
 function isRetryable(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  // 429 = rate limited, 5xx = transient upstream failure.
-  return /\b(429|500|502|503|504)\b|overloaded|unavailable|rate.?limit/i.test(message);
+  if (isQuotaError(message)) return false;
+
+  // 5xx and transient overload only — a fresh attempt plausibly succeeds.
+  return /\b(500|502|503|504)\b|overloaded|unavailable/i.test(message);
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -105,56 +197,68 @@ export async function generateStructured<T>({
   maxRetries = 2,
 }: GenerateOptions<T>): Promise<T> {
   const ai = getClient();
-  const model = modelFor(tier);
+  const candidates = modelsFor(tier);
 
   let lastError: unknown;
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const response = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: {
-          systemInstruction,
-          temperature,
-          responseMimeType: "application/json",
-          responseSchema,
-        },
-      });
-
-      const text = response.text;
-      if (!text) {
-        throw new AiResponseError("The model returned an empty response.");
-      }
-
-      let parsed: unknown;
+  // Outer loop walks the model pool; inner loop retries a single model.
+  for (const model of candidates) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        parsed = JSON.parse(unwrapJson(text));
-      } catch {
-        throw new AiResponseError("The model returned malformed JSON.", text);
+        const response = await ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            systemInstruction,
+            temperature,
+            responseMimeType: "application/json",
+            responseSchema,
+          },
+        });
+
+        const text = response.text;
+        if (!text) {
+          throw new AiResponseError("The model returned an empty response.");
+        }
+
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(unwrapJson(text));
+        } catch {
+          throw new AiResponseError("The model returned malformed JSON.", text);
+        }
+
+        const result = schema.safeParse(parsed);
+        if (!result.success) {
+          throw new AiResponseError(
+            `The model's response did not match the expected shape: ${result.error.issues
+              .slice(0, 3)
+              .map((issue) => `${issue.path.join(".")} ${issue.message}`)
+              .join("; ")}`,
+            text,
+          );
+        }
+
+        return result.data;
+      } catch (error) {
+        lastError = error;
+        const message = error instanceof Error ? error.message : String(error);
+
+        // Out of daily quota on this model: remember it and move to the next
+        // one immediately. Retrying here would waste the retry budget on a
+        // model that cannot answer again until tomorrow.
+        if (isQuotaError(message)) {
+          markExhausted(model, message);
+          break;
+        }
+
+        // A malformed or non-conforming response is worth retrying — the model
+        // is nondeterministic and often gets it right the second time.
+        const worthRetrying = error instanceof AiResponseError || isRetryable(error);
+        if (!worthRetrying || attempt === maxRetries) break;
+
+        await sleep(600 * 2 ** attempt);
       }
-
-      const result = schema.safeParse(parsed);
-      if (!result.success) {
-        throw new AiResponseError(
-          `The model's response did not match the expected shape: ${result.error.issues
-            .slice(0, 3)
-            .map((issue) => `${issue.path.join(".")} ${issue.message}`)
-            .join("; ")}`,
-          text,
-        );
-      }
-
-      return result.data;
-    } catch (error) {
-      lastError = error;
-
-      // A malformed or non-conforming response is worth retrying — the model
-      // is nondeterministic and often gets it right the second time.
-      const worthRetrying = error instanceof AiResponseError || isRetryable(error);
-      if (!worthRetrying || attempt === maxRetries) break;
-
-      await sleep(600 * 2 ** attempt);
     }
   }
 

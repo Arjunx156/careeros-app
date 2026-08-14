@@ -17,7 +17,16 @@ function createPrismaClient() {
   }
 
   return new PrismaClient({
-    adapter: new PrismaNeon({ connectionString }),
+    adapter: new PrismaNeon({
+      connectionString,
+      // Neon's free tier allows few concurrent connections, and dev hot-reload
+      // can leave more than one pool alive at a time. Without a cap, a burst of
+      // parallel requests exhausts the limit and every query starts failing
+      // with "Too many database connection attempts are currently ongoing".
+      max: 5,
+      idleTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 15_000,
+    }),
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 }
