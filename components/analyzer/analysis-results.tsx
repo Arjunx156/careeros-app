@@ -20,7 +20,11 @@ import {
   type RequirementStatus,
 } from "@/lib/score";
 import { cn } from "@/lib/utils";
-import type { AnalysisRecord } from "@/lib/analysis/types";
+import {
+  averageBulletScore,
+  BULLET_SCORE_LABELS,
+  type AnalysisRecord,
+} from "@/lib/analysis/types";
 
 function Section({
   title,
@@ -229,22 +233,12 @@ export function AnalysisResults({ analysis }: { analysis: AnalysisRecord }) {
       {bullets.length > 0 ? (
         <Section
           title="Bullet point analysis"
-          description="Each bullet scored on eight dimensions, with a suggested rewrite."
+          description="Each bullet scored on clarity, impact, relevance and STAR structure, with a suggested rewrite."
         >
           <ul className="space-y-2">
             {bullets.map((bullet, index) => {
               const isOpen = openBullet === index;
-              const average = Math.round(
-                (bullet.clarity +
-                  bullet.impact +
-                  bullet.relevance +
-                  bullet.quantification +
-                  bullet.actionVerb +
-                  bullet.jdAlignment +
-                  bullet.readability +
-                  bullet.starStructure) /
-                  8,
-              );
+              const average = averageBulletScore(bullet);
 
               return (
                 <li
@@ -260,10 +254,12 @@ export function AnalysisResults({ analysis }: { analysis: AnalysisRecord }) {
                     <span
                       className={cn(
                         "tabular shrink-0 text-body font-semibold",
-                        BAND_TEXT[scoreBand(average)],
+                        average === null
+                          ? "text-ink-muted"
+                          : BAND_TEXT[scoreBand(average)],
                       )}
                     >
-                      {average}
+                      {average ?? "—"}
                     </span>
                     <span className="min-w-0 flex-1 truncate text-body text-ink-secondary">
                       {bullet.original}
@@ -280,14 +276,11 @@ export function AnalysisResults({ analysis }: { analysis: AnalysisRecord }) {
                   {isOpen ? (
                     <div className="border-t border-line bg-canvas px-4 py-4">
                       <div className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
-                        <ScoreBar label="Clarity" score={bullet.clarity} />
-                        <ScoreBar label="Impact" score={bullet.impact} />
-                        <ScoreBar label="Relevance" score={bullet.relevance} />
-                        <ScoreBar label="Quantification" score={bullet.quantification} />
-                        <ScoreBar label="Action verb" score={bullet.actionVerb} />
-                        <ScoreBar label="JD alignment" score={bullet.jdAlignment} />
-                        <ScoreBar label="Readability" score={bullet.readability} />
-                        <ScoreBar label="STAR structure" score={bullet.starStructure} />
+                        {BULLET_SCORE_LABELS.map(({ field, label }) =>
+                          typeof bullet[field] === "number" ? (
+                            <ScoreBar key={field} label={label} score={bullet[field]} />
+                          ) : null,
+                        )}
                       </div>
 
                       {bullet.issues.length > 0 ? (

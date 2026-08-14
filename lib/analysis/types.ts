@@ -25,20 +25,62 @@ export type GapItem = {
   unsupported?: boolean;
 };
 
+/**
+ * Scored dimensions for a bullet.
+ *
+ * Kept as a named tuple so the UI averages exactly what the AI schema produces.
+ * Previously the type declared eight fields while the schema emitted four; the
+ * four missing ones read as undefined at runtime and the average rendered NaN.
+ * TypeScript could not catch it because the data arrives as JSON from the
+ * database, where the declared type is an assertion rather than a guarantee.
+ */
+export const BULLET_SCORE_FIELDS = [
+  "clarity",
+  "impact",
+  "relevance",
+  "starStructure",
+] as const;
+
+export type BulletScoreField = (typeof BULLET_SCORE_FIELDS)[number];
+
+/** Field-to-label pairs, so the UI cannot drift from the schema again. */
+export const BULLET_SCORE_LABELS: ReadonlyArray<{
+  field: BulletScoreField;
+  label: string;
+}> = [
+  { field: "clarity", label: "Clarity" },
+  { field: "impact", label: "Impact" },
+  { field: "relevance", label: "Relevance" },
+  { field: "starStructure", label: "STAR structure" },
+];
+
 export type BulletItem = {
+  /** Evidence id of the bullet this rewrites. */
+  bulletId?: string;
   original: string;
   clarity: number;
   impact: number;
   relevance: number;
-  quantification: number;
-  actionVerb: number;
-  jdAlignment: number;
-  readability: number;
   starStructure: number;
   issues: string[];
   suggested: string;
   whatChanged: string;
 };
+
+/**
+ * Average of whichever score fields are actually present.
+ *
+ * Returns null rather than NaN when none are, so callers must handle the
+ * missing case instead of rendering a broken number.
+ */
+export function averageBulletScore(bullet: BulletItem): number | null {
+  const values = BULLET_SCORE_FIELDS.map((field) => bullet[field]).filter(
+    (value): value is number => typeof value === "number" && Number.isFinite(value),
+  );
+
+  if (values.length === 0) return null;
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
 
 export type AtsIssue = {
   level: "error" | "warning" | "info";

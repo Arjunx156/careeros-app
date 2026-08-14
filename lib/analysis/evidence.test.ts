@@ -5,6 +5,7 @@ import {
   redactFabricatedNumbers,
   validateClaims,
 } from "@/lib/analysis/evidence";
+import { averageBulletScore } from "@/lib/analysis/types";
 
 const RESUME = `EXPERIENCE
 Business Analyst — Acme Payments (2023-Present)
@@ -150,5 +151,39 @@ describe("redactFabricatedNumbers", () => {
       allowedQuantitiesFor(withBig),
     );
     expect(result.redacted).toEqual([]);
+  });
+});
+
+describe("averageBulletScore", () => {
+  const base = {
+    original: "x",
+    clarity: 80,
+    impact: 60,
+    relevance: 70,
+    starStructure: 50,
+    issues: [],
+    suggested: "y",
+    whatChanged: "z",
+  };
+
+  test("averages the four scored dimensions", () => {
+    expect(averageBulletScore(base)).toBe(65);
+  });
+
+  test("ignores fields the schema no longer produces", () => {
+    // Older rows may carry extra keys; newer ones may lack some. Neither
+    // should produce NaN in the UI.
+    const legacy = { ...base, quantification: 40 } as never;
+    expect(averageBulletScore(legacy)).toBe(65);
+  });
+
+  test("returns null rather than NaN when no scores are present", () => {
+    const empty = { original: "x", issues: [], suggested: "y", whatChanged: "z" } as never;
+    expect(averageBulletScore(empty)).toBeNull();
+  });
+
+  test("averages the subset that is present", () => {
+    const partial = { ...base, starStructure: undefined } as never;
+    expect(averageBulletScore(partial)).toBe(70);
   });
 });
