@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { AlertTriangle, ArrowLeft, ExternalLink, FileText } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { AnalysisResults } from "@/components/analyzer/analysis-results";
+import { OptimizePanel } from "@/components/resume/optimize-panel";
 import { ResumeAnalysisResume } from "@/components/analyzer/analysis-resume-button";
 import { TOTAL_STAGES } from "@/lib/ai/pipeline";
 import { toAnalysisRecord } from "@/lib/analysis/types";
@@ -42,6 +43,12 @@ export default async function AnalysisPage(props: PageProps<"/job-analyzer/[id]"
   });
 
   if (!analysis) notFound();
+
+  const optimized = await prisma.optimizedResume.findMany({
+    where: { userId, analysisId: analysis.id },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, name: true, pdfUrl: true, docxUrl: true },
+  });
 
   const record = toAnalysisRecord(analysis);
   const isIncomplete = analysis.status !== "complete";
@@ -109,6 +116,19 @@ export default async function AnalysisPage(props: PageProps<"/job-analyzer/[id]"
       ) : null}
 
       <AnalysisResults analysis={record} />
+
+      <div className="mt-5">
+        <OptimizePanel
+          analysisId={analysis.id}
+          isComplete={analysis.status === "complete"}
+          existing={optimized.map((item) => ({
+            id: item.id,
+            name: item.name,
+            pdfUrl: item.pdfUrl,
+            docxUrl: item.docxUrl,
+          }))}
+        />
+      </div>
     </>
   );
 }

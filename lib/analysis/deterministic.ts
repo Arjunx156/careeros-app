@@ -35,13 +35,41 @@ export function stem(word: string): string {
     .replace(/(y)$/i, "i");
 }
 
+/**
+ * Strip punctuation from a token's edges while keeping it inside.
+ *
+ * normalize() deliberately preserves "." so "Node.js" and "React.js" survive
+ * as single tokens — but that also glues sentence-final periods on, so
+ * "FastAPI." never matched the term "FastAPI". Trimming only the edges keeps
+ * both cases correct.
+ */
+export function trimEdgePunctuation(token: string): string {
+  // Only "." and "-" are trimmed. A trailing "+" or "#" is part of the name in
+  // C++, C# and F# — stripping those reduced "C++" to "c", which then failed
+  // the minimum-length filter and reported a language the resume clearly lists
+  // as missing.
+  return token.replace(/^[.-]+/, "").replace(/[.-]+$/, "");
+}
+
 function tokenSet(text: string): Set<string> {
-  return new Set(
-    normalize(text)
-      .split(" ")
-      .filter((token) => token.length > 1)
-      .map(stem),
-  );
+  const tokens = new Set<string>();
+
+  for (const raw of normalize(text).split(" ")) {
+    const token = trimEdgePunctuation(raw);
+    if (token.length > 1) tokens.add(stem(token));
+
+    // Index the parts of a hyphenated compound too, so "BiLSTM-based" also
+    // answers to "BiLSTM". Without this a resume saying "BiLSTM-based models"
+    // reads as having no BiLSTM experience.
+    if (token.includes("-")) {
+      for (const part of token.split("-")) {
+        const trimmed = trimEdgePunctuation(part);
+        if (trimmed.length > 1) tokens.add(stem(trimmed));
+      }
+    }
+  }
+
+  return tokens;
 }
 
 /**
@@ -56,12 +84,22 @@ export function containsTerm(haystack: string, term: string): boolean {
 
   const normalizedHaystack = normalize(haystack);
 
+  const tokens = tokenSet(normalizedHaystack);
+
   if (normalizedTerm.includes(" ")) {
-    return normalizedHaystack.includes(normalizedTerm);
+    // Exact phrase first — the strongest signal.
+    if (normalizedHaystack.includes(normalizedTerm)) return true;
+
+    // Otherwise accept when every word of the term is present, stemmed. This
+    // is what lets "REST APIs" match a resume that says "REST API endpoints".
+    return normalizedTerm
+      .split(" ")
+      .map((word) => stem(trimEdgePunctuation(word)))
+      .filter((word) => word.length > 1)
+      .every((word) => tokens.has(word));
   }
 
-  const tokens = tokenSet(normalizedHaystack);
-  return tokens.has(stem(normalizedTerm));
+  return tokens.has(stem(trimEdgePunctuation(normalizedTerm)));
 }
 
 /** How many times a term appears — used to flag overuse. */

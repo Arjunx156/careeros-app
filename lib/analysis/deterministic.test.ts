@@ -187,3 +187,43 @@ describe("analyzeReadability", () => {
     expect(Number.isNaN(result.averageBulletWords)).toBe(false);
   });
 });
+
+describe("punctuation at token edges", () => {
+  test("matches a term followed by a sentence period", () => {
+    // normalize() keeps "." so "Node.js" survives; the trailing period must not
+    // stop "FastAPI." from matching "FastAPI".
+    expect(containsTerm("Built the service with FastAPI.", "FastAPI")).toBe(true);
+  });
+
+  test("matches a term followed by a comma", () => {
+    expect(containsTerm("Used Python, SQL and Excel", "Python")).toBe(true);
+  });
+
+  test("still matches a dotted product name", () => {
+    expect(containsTerm("Built the app in Node.js", "Node.js")).toBe(true);
+  });
+
+  test("keyword analysis is not fooled by trailing punctuation", () => {
+    const result = analyzeKeywords(["FastAPI", "Redis"], "Deployed with FastAPI.");
+    expect(result.present).toEqual(["FastAPI"]);
+    expect(result.missing).toEqual(["Redis"]);
+  });
+});
+
+describe("language names with punctuation", () => {
+  const source = "Proficient in C++, C#, Python and F#.";
+
+  test.each(["C++", "C#", "F#"])("matches %s", (language) => {
+    expect(containsTerm(source, language)).toBe(true);
+  });
+
+  test("a trailing sentence period is still trimmed", () => {
+    expect(containsTerm(source, "Python")).toBe(true);
+  });
+
+  test("does not report a listed language as missing", () => {
+    const result = analyzeKeywords(["C++", "Rust"], source);
+    expect(result.present).toEqual(["C++"]);
+    expect(result.missing).toEqual(["Rust"]);
+  });
+});
