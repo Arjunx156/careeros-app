@@ -1,11 +1,22 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowUp, Bot, Square, User } from "lucide-react";
+import { AlertTriangle, ArrowUp, Bot, RotateCw, Square, User } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-type ChatMessage = { role: "user" | "model"; content: string };
+type ChatMessage = {
+  role: "user" | "model";
+  content: string;
+  /**
+   * Set when the answer never arrived.
+   *
+   * Previously a failed send restored the history including the unanswered
+   * question, so failures stacked up as bare user messages with no indication
+   * of what went wrong and no way to try again.
+   */
+  error?: string;
+};
 
 export function CopilotChat({ suggestions }: { suggestions: string[] }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -22,11 +33,13 @@ export function CopilotChat({ suggestions }: { suggestions: string[] }) {
     });
   }, [messages]);
 
-  async function send(question: string) {
+  async function send(question: string, replaceLast = false) {
     const trimmed = question.trim();
     if (trimmed.length === 0 || isStreaming) return;
 
-    const history: ChatMessage[] = [...messages, { role: "user", content: trimmed }];
+    // Retrying replaces the failed exchange rather than appending a duplicate.
+    const base = replaceLast ? messages.slice(0, -1) : messages;
+    const history: ChatMessage[] = [...base, { role: "user", content: trimmed }];
     setMessages([...history, { role: "model", content: "" }]);
     setInput("");
     setIsStreaming(true);
@@ -46,8 +59,13 @@ export function CopilotChat({ suggestions }: { suggestions: string[] }) {
         const payload = (await response.json().catch(() => ({}))) as {
           error?: string;
         };
-        toast.error(payload.error ?? "The copilot could not answer.");
-        setMessages(history);
+        const reason = payload.error ?? "The copilot could not answer.";
+        toast.error(reason);
+        // Keep the question attached to its failure so it can be retried.
+        setMessages([
+          ...base,
+          { role: "user", content: trimmed, error: reason },
+        ]);
         return;
       }
 
@@ -63,9 +81,16 @@ export function CopilotChat({ suggestions }: { suggestions: string[] }) {
         setMessages([...history, { role: "model", content: answer }]);
       }
     } catch (error) {
-      if ((error as Error).name !== "AbortError") {
-        toast.error("Connection error. Please try again.");
-        setMessages(history);
+      if ((error as Error).name === "AbortError") {
+        // Stopped deliberately — keep whatever streamed in.
+        setMessages((current) => current.filter((m) => m.content.length > 0));
+      } else {
+        const reason = "Connection error. Check your internet and try again.";
+        toast.error(reason);
+        setMessages([
+          ...base,
+          { role: "user", content: trimmed, error: reason },
+        ]);
       }
     } finally {
       setIsStreaming(false);
@@ -123,7 +148,7 @@ export function CopilotChat({ suggestions }: { suggestions: string[] }) {
                     <p className="text-body whitespace-pre-wrap text-ink">
                       {message.content}
                     </p>
-                  ) : (
+                  ) : message.error ? null : (
                     <span className="inline-flex gap-1" aria-label="Thinking">
                       {[0, 150, 300].map((delay) => (
                         <span
@@ -134,6 +159,27 @@ export function CopilotChat({ suggestions }: { suggestions: string[] }) {
                       ))}
                     </span>
                   )}
+
+                  {message.error ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-[var(--radius-badge)] bg-danger-bg px-2.5 py-2">
+                      <AlertTriangle
+                        aria-hidden
+                        className="size-3.5 shrink-0 text-danger"
+                      />
+                      <span className="min-w-0 flex-1 text-label text-ink-secondary">
+                        {message.error}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void send(message.content, true)}
+                        disabled={isStreaming}
+                        className="inline-flex items-center gap-1 rounded-[var(--radius-badge)] px-1.5 py-0.5 text-label font-medium text-danger transition-colors hover:bg-danger/10 disabled:opacity-50"
+                      >
+                        <RotateCw aria-hidden className="size-3" />
+                        Retry
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </li>
             ))}

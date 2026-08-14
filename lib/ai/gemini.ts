@@ -70,8 +70,14 @@ function isExhausted(model: string): boolean {
   return true;
 }
 
-/** Google tells us when to come back; honour it, or assume the daily window. */
-function markExhausted(model: string, message: string): void {
+/**
+ * Google tells us when to come back; honour it, or assume the daily window.
+ *
+ * Exported so the streaming copilot route, which runs its own failover loop
+ * rather than going through generateStructured, records exhaustion in the same
+ * shared map instead of rediscovering it on every request.
+ */
+export function markModelExhausted(model: string, message: string): void {
   const retryMatch = message.match(/retry in ([\d.]+)s/i);
   const retryMs = retryMatch ? Number(retryMatch[1]) * 1000 : NaN;
 
@@ -274,7 +280,7 @@ export async function generateStructured<T>({
         // one immediately. Retrying here would waste the retry budget on a
         // model that cannot answer again until tomorrow.
         if (isQuotaError(message)) {
-          markExhausted(model, message);
+          markModelExhausted(model, message);
           break;
         }
 
