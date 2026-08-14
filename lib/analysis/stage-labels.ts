@@ -1,26 +1,25 @@
 /**
- * Pipeline stage keys and their progress labels.
+ * Pipeline stages and their progress labels.
  *
- * Lives apart from lib/ai/pipeline.ts because that module is server-only (it
- * pulls in the Gemini client), while the progress UI is a client component.
- * The pipeline imports these, so the order here is the order of execution.
+ * Separate from the pipeline itself because that module is server-only (it
+ * pulls in the Gemini client) while the progress UI is a client component.
+ * Order here is order of execution.
+ *
+ * Only three stages call the AI. The "measure" stage is pure computation and
+ * returns instantly — it is listed so the user sees what the app is doing, not
+ * because it costs anything.
  */
 export const STAGE_DEFINITIONS = [
-  { key: "extract", label: "Extracting JD requirements" },
-  { key: "score", label: "Scoring resume against the JD" },
-  { key: "gaps", label: "Analyzing gaps" },
-  { key: "bullets", label: "Scoring bullet points" },
-  { key: "keywords", label: "Comparing keywords" },
-  { key: "ats", label: "Checking ATS compatibility" },
-  { key: "recruiter", label: "Running the 10-second recruiter test" },
-  { key: "actionPlan", label: "Building your action plan" },
-  { key: "summary", label: "Writing your tailored summary" },
+  { key: "extract", label: "Reading the job description", usesAi: true },
+  { key: "measure", label: "Measuring your resume", usesAi: false },
+  { key: "judgment", label: "Judging your evidence", usesAi: true },
+  { key: "synthesis", label: "Writing your action plan", usesAi: true },
 ] as const;
 
 export type StageKey = (typeof STAGE_DEFINITIONS)[number]["key"];
 
-export const STAGE_LABELS_CLIENT: string[] = STAGE_DEFINITIONS.map(
-  (stage) => stage.label,
-);
-
+export const STAGE_LABELS_CLIENT: string[] = STAGE_DEFINITIONS.map((s) => s.label);
 export const TOTAL_STAGES_CLIENT = STAGE_DEFINITIONS.length;
+
+/** How many stages actually spend an API request — used for quota messaging. */
+export const AI_STAGE_COUNT = STAGE_DEFINITIONS.filter((s) => s.usesAi).length;

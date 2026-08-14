@@ -1,162 +1,125 @@
 import { z } from "zod";
 
 /**
- * Output schemas for every pipeline stage.
+ * Output schemas for the three LLM stages.
  *
- * These are the contract between the model and the database. Anything that
- * fails to parse here never reaches Postgres — the stage retries instead.
+ * Two design rules run through all of them:
+ *
+ *   1. Every judgment cites evidence. `supportingBulletIds` refers to bullet
+ *      ids produced by lib/analysis/facts.ts. A citation to an id that does not
+ *      exist is caught by lib/analysis/evidence.ts, and the claim is marked
+ *      unsupported rather than presented as fact.
+ *
+ *   2. Nothing measurable is asked of the model. Keyword presence, ATS
+ *      structure and quantification rates are computed in code, so the model is
+ *      only ever asked for judgment and language.
  */
 
 const score = z.number().int().min(0).max(100);
 const requirementStatus = z.enum(["strong", "partial", "missing"]);
 
-// ─── Stage 1: JD extraction ──────────────────────────────────────────────────
+/**
+ * Evidence ids: b1.. for bullets, s1 for the summary, k1 for the skills list.
+ *
+ * The prefixes matter. A resume often evidences a skill only in its skills
+ * section — an earlier version of this pattern accepted bullet ids alone, so
+ * the model's correct citation of k1 for SQL was rejected as malformed and the
+ * requirement came back "not evidenced".
+ */
+const bulletId = z.string().regex(/^[bsk]\d+$/);
+const citations = z.array(bulletId).default([]);
 
-const requirementItem = z.object({
+// ─── Stage 1: JD extraction (fast tier, JD text only) ────────────────────────
+
+const requirement = z.object({
   requirement: z.string().min(1),
-  /** Why the JD asks for it — helps the user judge whether it is negotiable. */
-  context: z.string(),
+  /** Verbatim phrase from the JD, so the user can see where it came from. */
+  sourcePhrase: z.string().default(""),
 });
 
 export const jdExtractionSchema = z.object({
-  company: z.string(),
-  role: z.string(),
-  seniority: z.string(),
-  mustHave: z.array(requirementItem),
-  niceToHave: z.array(requirementItem),
-  responsibilities: z.array(z.string()),
-  softSkills: z.array(z.string()),
-  educationRequirements: z.array(z.string()),
-  experienceRequirements: z.array(z.string()),
+  company: z.string().default(""),
+  role: z.string().default(""),
+  seniority: z.string().default(""),
+  mustHave: z.array(requirement).max(12),
+  niceToHave: z.array(requirement).max(10),
+  responsibilities: z.array(z.string()).max(10),
+  softSkills: z.array(z.string()).max(8),
+  educationRequirements: z.array(z.string()).max(5),
+  experienceRequirements: z.array(z.string()).max(5),
+  /** Terms worth checking for in the resume — matching is done in code. */
+  keyTerms: z.array(z.string()).max(30),
 });
 export type JdExtraction = z.infer<typeof jdExtractionSchema>;
 
-// ─── Stage 2: Scoring ────────────────────────────────────────────────────────
+// ─── Stage 2: Judgment (deep tier, retrieved evidence only) ──────────────────
 
-export const scoringSchema = z.object({
-  overallScore: score,
+const requirementJudgment = z.object({
+  requirement: z.string().min(1),
+  status: requirementStatus,
+  /** What the cited evidence actually shows. */
+  current: z.string(),
+  /** What is missing, stated plainly. */
+  gap: z.string(),
+  /** Only actionable if genuinely true of the candidate. */
+  recommendation: z.string(),
+  supportingBulletIds: citations,
+});
+
+const bulletJudgment = z.object({
+  bulletId,
+  /** Repeated so the UI can render without a second lookup. */
+  original: z.string(),
+  clarity: score,
+  impact: score,
+  relevance: score,
+  starStructure: score,
+  issues: z.array(z.string()).max(4),
+  /** Rewrite. Must not introduce figures absent from the original. */
+  suggested: z.string(),
+  whatChanged: z.string(),
+});
+
+export const judgmentSchema = z.object({
+  // Scores the model is genuinely better placed to judge than code.
   experienceScore: score,
   skillsScore: score,
-  keywordAtsScore: score,
   responsibilityScore: score,
   industryScore: score,
   seniorityScore: score,
   educationScore: score,
-  quantificationScore: score,
-  recruiterReadability: score,
   overallRecruiterAppeal: score,
-  reasoning: z.string(),
+  scoreReasoning: z.string(),
+
+  requirements: z.array(requirementJudgment).max(20),
+  bullets: z.array(bulletJudgment).max(15),
 });
-export type Scoring = z.infer<typeof scoringSchema>;
+export type Judgment = z.infer<typeof judgmentSchema>;
 
-// ─── Stage 3: Gap analysis ───────────────────────────────────────────────────
+// ─── Stage 3: Synthesis (deep tier, prior stage outputs only) ────────────────
 
-export const gapsSchema = z.object({
-  gaps: z.array(
-    z.object({
-      requirement: z.string().min(1),
-      status: requirementStatus,
-      /** What the resume currently shows for this requirement. */
-      current: z.string(),
-      /** What is missing, stated plainly. */
-      gap: z.string(),
-      /** Exactly what to add — phrased so it is only actionable if true. */
-      recommendation: z.string(),
-    }),
-  ),
+const actionItem = z.object({
+  priority: z.number().int().min(1).max(10),
+  title: z.string().min(1),
+  problem: z.string(),
+  why: z.string(),
+  solution: z.string(),
+  example: z.string(),
+  supportingBulletIds: citations,
 });
-export type Gaps = z.infer<typeof gapsSchema>;
 
-// ─── Stage 4: Bullet analysis ────────────────────────────────────────────────
-
-export const bulletsSchema = z.object({
-  bullets: z.array(
-    z.object({
-      original: z.string().min(1),
-      clarity: score,
-      impact: score,
-      relevance: score,
-      quantification: score,
-      actionVerb: score,
-      jdAlignment: score,
-      readability: score,
-      starStructure: score,
-      issues: z.array(z.string()),
-      suggested: z.string(),
-      whatChanged: z.string(),
-    }),
-  ),
+const recruiterAnswer = z.object({
+  question: z.string().min(1),
+  answer: z.string(),
+  supportingBulletIds: citations,
 });
-export type Bullets = z.infer<typeof bulletsSchema>;
 
-// ─── Stage 5: Keywords ───────────────────────────────────────────────────────
-
-export const keywordsSchema = z.object({
-  present: z.array(z.string()),
-  missing: z.array(z.string()),
-  overused: z.array(z.string()),
-  byCategory: z.object({
-    technical: z.array(z.string()),
-    functional: z.array(z.string()),
-    industry: z.array(z.string()),
-    softSkills: z.array(z.string()),
-  }),
+export const synthesisSchema = z.object({
+  recruiterVerdict: z.enum(["strong", "potential", "weak"]),
+  recruiterVerdictReason: z.string(),
+  recruiterAnswers: z.array(recruiterAnswer).max(8),
+  actionPlan: z.array(actionItem).max(8),
+  recommendedSummary: z.string(),
+  summaryWhyBetter: z.string(),
 });
-export type Keywords = z.infer<typeof keywordsSchema>;
-
-// ─── Stage 6: ATS ────────────────────────────────────────────────────────────
-
-export const atsSchema = z.object({
-  atsScore: score,
-  issues: z.array(
-    z.object({
-      level: z.enum(["error", "warning", "info"]),
-      area: z.string(),
-      message: z.string(),
-      fix: z.string(),
-    }),
-  ),
-});
-export type Ats = z.infer<typeof atsSchema>;
-
-// ─── Stage 7: Recruiter 10-second test ───────────────────────────────────────
-
-export const recruiterSchema = z.object({
-  verdict: z.enum(["strong", "potential", "weak"]),
-  reason: z.string().min(1),
-  answers: z.array(
-    z.object({
-      question: z.string().min(1),
-      answer: z.string(),
-      /** Whether a recruiter could answer this in the first 10 seconds. */
-      answerable: z.boolean(),
-    }),
-  ),
-});
-export type Recruiter = z.infer<typeof recruiterSchema>;
-
-// ─── Stage 8: Action plan ────────────────────────────────────────────────────
-
-export const actionPlanSchema = z.object({
-  actions: z.array(
-    z.object({
-      priority: z.number().int().min(1),
-      title: z.string().min(1),
-      problem: z.string(),
-      why: z.string(),
-      solution: z.string(),
-      example: z.string(),
-      effort: z.enum(["quick", "moderate", "significant"]),
-    }),
-  ),
-});
-export type ActionPlan = z.infer<typeof actionPlanSchema>;
-
-// ─── Stage 9: Summary ────────────────────────────────────────────────────────
-
-export const summarySchema = z.object({
-  currentSummary: z.string(),
-  recommendedSummary: z.string().min(1),
-  whyBetter: z.string().min(1),
-});
-export type Summary = z.infer<typeof summarySchema>;
+export type Synthesis = z.infer<typeof synthesisSchema>;

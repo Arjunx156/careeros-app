@@ -59,3 +59,22 @@ describe("describeStageError", () => {
     expect(typeof describeStageError(error)).toBe("string");
   });
 });
+
+describe("describeStageError — message length", () => {
+  test("keeps a Prisma error to its diagnosis, not the whole echoed query", () => {
+    const prismaError = new Error(
+      "\nInvalid `prisma.analysis.update()` invocation:\n\n{\n  where: { id: \"abc\" },\n  data: {\n" +
+        "    someField: \"x\",\n".repeat(200) +
+        "  }\n}\n\nUnknown argument `stageData`.",
+    );
+    const result = describeStageError(prismaError);
+    expect(result.length).toBeLessThanOrEqual(301);
+    expect(result).toContain("Invalid");
+  });
+
+  test("leaves a short message untouched", () => {
+    expect(describeStageError(new Error("The resume has no extractable text."))).toBe(
+      "The resume has no extractable text.",
+    );
+  });
+});

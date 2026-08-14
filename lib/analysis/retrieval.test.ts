@@ -104,3 +104,45 @@ describe("retrieveForRequirements", () => {
     expect(evidenceChars).toBeLessThan(RESUME.length);
   });
 });
+
+describe("evidence beyond experience bullets", () => {
+  const withSkills = parseResumeFacts(`PROFESSIONAL SUMMARY
+Business analyst with 2 years of experience translating stakeholder requirements into SQL-backed reporting.
+
+EXPERIENCE
+Analyst — Acme (2023-Present)
+• Facilitated weekly workshops with product leads.
+
+SKILLS
+SQL, Python, Power BI, Stakeholder Management`);
+
+  test("retrieves the skills line for a skill only listed there", () => {
+    const hits = retrieveEvidence(indexResume(withSkills), "Advanced SQL");
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.map((h) => h.bullet.id)).toContain("k1");
+  });
+
+  test("retrieves the summary when a requirement matches its content", () => {
+    const hits = retrieveEvidence(indexResume(withSkills), "stakeholder requirements reporting");
+    expect(hits.map((h) => h.bullet.id)).toContain("s1");
+  });
+
+  test("tenure is a computed fact, not something retrieval has to find", () => {
+    // "years" and "experience" are stop words — they appear in every resume and
+    // carry no retrieval signal. Tenure comes from the dates instead.
+    expect(retrieveEvidence(indexResume(withSkills), "2+ years experience")).toEqual([]);
+    expect(withSkills.totalExperienceYears).toBeGreaterThan(0);
+  });
+
+  test("still ranks a real bullet above the skills list when both match", () => {
+    const hits = retrieveEvidence(indexResume(withSkills), "workshops with product leads");
+    expect(hits[0]?.bullet.id).toMatch(/^b\d+$/);
+  });
+
+  test("evidence includes bullets plus summary and skills", () => {
+    const ids = withSkills.evidence.map((e) => e.id);
+    expect(ids).toContain("s1");
+    expect(ids).toContain("k1");
+    expect(ids.some((id) => /^b\d+$/.test(id))).toBe(true);
+  });
+});

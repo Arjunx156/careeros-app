@@ -28,7 +28,7 @@ export async function POST(
       where: { id, userId },
       include: {
         resumeVersion: { select: { extractedText: true } },
-        jobDescription: { select: { jdText: true } },
+        jobDescription: { select: { jdText: true, company: true, role: true } },
       },
     });
     if (!analysis) return apiError("Analysis not found.", 404);
@@ -54,37 +54,44 @@ export async function POST(
       return apiError("The resume has no extractable text.", 422);
     }
 
-    // Give later stages what earlier ones produced, rather than re-deriving it.
+    // Everything earlier stages produced: the scratch data they handed forward,
+    // plus the columns they wrote. A stage never re-derives or re-asks for work
+    // an earlier one already did.
+    const stageData = (analysis.stageData ?? {}) as Prisma.JsonObject;
     const stageContext: StageContext = {
       resumeText,
       jdText: analysis.jobDescription.jdText,
+      company: analysis.jobDescription.company,
+      role: analysis.jobDescription.role,
       prior: {
-        requirements: {
-          mustHave: analysis.mustHaveRequirements ?? [],
-          niceToHave: analysis.niceToHaveRequirements ?? [],
-          responsibilities: analysis.responsibilities ?? [],
-          softSkills: analysis.softSkills ?? [],
-        },
-        findings: {
-          overallScore: analysis.overallScore,
-          gaps: analysis.gaps ?? [],
-          keywordsMissing: analysis.keywordsMissing,
-          atsIssues: analysis.atsIssues ?? [],
-          recruiterVerdict: analysis.recruiterVerdict,
-          recruiterVerdictReason: analysis.recruiterVerdictReason,
-        },
+        ...stageData,
+        keywordsPresent: analysis.keywordsPresent,
+        keywordsMissing: analysis.keywordsMissing,
+        atsScore: analysis.atsScore,
+        atsIssues: analysis.atsIssues ?? [],
+        quantificationScore: analysis.quantificationScore,
+        overallScore: analysis.overallScore,
       } as Prisma.JsonObject,
     };
 
     try {
-      const data = await stage.run(stageContext);
+      const result = await stage.run(stageContext);
       const nextStage = analysis.stage + 1;
       const isDone = nextStage >= TOTAL_STAGES;
 
       await prisma.analysis.update({
         where: { id },
         data: {
-          ...data,
+          ...result.update,
+          // Merge rather than replace: each stage adds to what came before.
+          ...(result.data
+            ? {
+                stageData: {
+                  ...stageData,
+                  ...result.data,
+                } as Prisma.InputJsonValue,
+              }
+            : {}),
           stage: nextStage,
           status: isDone ? "complete" : "processing",
           stageError: null,

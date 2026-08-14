@@ -19,6 +19,10 @@ export type GapItem = {
   current: string;
   gap: string;
   recommendation: string;
+  /** Resume bullet ids backing this judgment, after validation dropped bad ones. */
+  supportingBulletIds?: string[];
+  /** Set by the validator when no cited bullet survived — rendered as "not evidenced". */
+  unsupported?: boolean;
 };
 
 export type BulletItem = {

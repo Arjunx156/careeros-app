@@ -79,6 +79,14 @@ export function zodToGemini(schema: z.ZodType): GeminiSchema {
     case "optional":
       return def.innerType ? zodToGemini(def.innerType) : { type: "STRING" };
 
+    // A default applies when the model omits the key, so the wire schema is
+    // just the inner type. Treated as required so the model is nudged to
+    // answer rather than relying on our fallback.
+    case "default":
+    case "prefault":
+    case "catch":
+      return def.innerType ? zodToGemini(def.innerType) : { type: "STRING" };
+
     case "nullable": {
       const inner = def.innerType ? zodToGemini(def.innerType) : { type: "STRING" };
       return { ...inner, nullable: true };

@@ -57,11 +57,31 @@ export type SectionKind =
 
 export type ResumeFacts = {
   sections: ResumeSection[];
+  /** Experience/project bullets — the things that get rewritten. */
   bullets: ResumeBullet[];
+  /**
+   * Everything citable as evidence: the bullets, plus the summary and the
+   * skills list as their own units.
+   *
+   * Retrieval and citation validation run over this, not over `bullets`.
+   * Indexing only bullets meant a resume listing SQL in its skills section and
+   * describing "SQL-backed reporting" in its summary had no retrievable
+   * evidence for SQL at all, so the analyzer reported it missing.
+   */
+  evidence: ResumeBullet[];
   /** Skills listed in a dedicated skills section. */
   declaredSkills: string[];
   dateRanges: DateRange[];
   summaryText: string | null;
+  /**
+   * Years of professional experience, derived from date ranges.
+   *
+   * Computed rather than retrieved: "2+ years of experience" tokenizes to
+   * nothing useful for lexical search, since "years" and "experience" appear in
+   * every resume. Tenure is arithmetic over dates, so it is handed to the model
+   * as a fact instead of being something it has to find.
+   */
+  totalExperienceYears: number | null;
   contact: { email: string | null; phone: string | null; links: string[] };
   totalWords: number;
 };
@@ -69,12 +89,26 @@ export type ResumeFacts = {
 // ─── Section heading detection ───────────────────────────────────────────────
 
 const SECTION_PATTERNS: Array<{ kind: SectionKind; pattern: RegExp }> = [
-  { kind: "summary", pattern: /^(professional\s+)?(summary|profile|objective|about)\b/i },
-  { kind: "experience", pattern: /^(work\s+|professional\s+|relevant\s+)?(experience|employment|history)\b/i },
+  {
+    kind: "summary",
+    pattern: /^(professional\s+)?(summary|profile|objective|about)\b/i,
+  },
+  {
+    kind: "experience",
+    pattern:
+      /^(work\s+|professional\s+|relevant\s+)?(experience|employment|history)\b/i,
+  },
   { kind: "education", pattern: /^(education|academic|qualifications)\b/i },
-  { kind: "skills", pattern: /^(technical\s+|core\s+|key\s+)?(skills|competencies|expertise|technologies)\b/i },
+  {
+    kind: "skills",
+    pattern:
+      /^(technical\s+|core\s+|key\s+)?(skills|competencies|expertise|technologies)\b/i,
+  },
   { kind: "projects", pattern: /^(projects|portfolio|selected\s+work)\b/i },
-  { kind: "certifications", pattern: /^(certifications?|licenses?|awards?|publications?)\b/i },
+  {
+    kind: "certifications",
+    pattern: /^(certifications?|licenses?|awards?|publications?)\b/i,
+  },
 ];
 
 const BULLET_GLYPH = /^[\s]*[•·▪◦‣∙*\-–—]\s+/;
@@ -84,7 +118,9 @@ const BULLET_GLYPH = /^[\s]*[•·▪◦‣∙*\-–—]\s+/;
  * matches a known section name. Requiring both shape and brevity avoids
  * mistaking a capitalized sentence for a heading.
  */
-function detectHeading(line: string): { kind: SectionKind; heading: string } | null {
+function detectHeading(
+  line: string,
+): { kind: SectionKind; heading: string } | null {
   const trimmed = line.trim();
   if (trimmed.length === 0 || trimmed.length > 60) return null;
   if (BULLET_GLYPH.test(line)) return null;
@@ -93,12 +129,15 @@ function detectHeading(line: string): { kind: SectionKind; heading: string } | n
   const withoutTrailingColon = trimmed.replace(/:$/, "");
 
   for (const { kind, pattern } of SECTION_PATTERNS) {
-    if (pattern.test(withoutTrailingColon)) return { kind, heading: withoutTrailingColon };
+    if (pattern.test(withoutTrailingColon))
+      return { kind, heading: withoutTrailingColon };
   }
 
   const letters = withoutTrailingColon.replace(/[^a-z]/gi, "");
   const isAllCaps =
-    letters.length >= 3 && letters === letters.toUpperCase() && /^[A-Z0-9\s&/,'-]+$/.test(withoutTrailingColon);
+    letters.length >= 3 &&
+    letters === letters.toUpperCase() &&
+    /^[A-Z0-9\s&/,'-]+$/.test(withoutTrailingColon);
 
   if (isAllCaps) return { kind: "other", heading: withoutTrailingColon };
 
@@ -207,21 +246,58 @@ export function extractDateRanges(text: string): DateRange[] {
   return ranges;
 }
 
+/**
+ * Total years spanned by the date ranges, merging overlaps so concurrent roles
+ * are not double-counted.
+ */
+export function computeExperienceYears(ranges: readonly DateRange[]): number | null {
+  const currentYear = new Date().getFullYear();
+
+  const spans = ranges
+    .filter((range) => range.startYear !== null)
+    .map((range) => ({
+      start: range.startYear as number,
+      end: range.isCurrent ? currentYear : (range.endYear ?? range.startYear as number),
+    }))
+    .filter((span) => span.end >= span.start)
+    .sort((a, b) => a.start - b.start);
+
+  if (spans.length === 0) return null;
+
+  let total = 0;
+  let cursor = -Infinity;
+
+  for (const span of spans) {
+    const from = Math.max(span.start, cursor);
+    if (span.end > from) total += span.end - from;
+    cursor = Math.max(cursor, span.end);
+  }
+
+  return total;
+}
+
 // ─── Skills ──────────────────────────────────────────────────────────────────
 
 function parseSkillList(text: string): string[] {
   return text
     .split(/[,;|·••]|\s{2,}/)
     .map((part) => part.trim().replace(/^[-–—:]\s*/, ""))
-    .filter((part) => part.length > 1 && part.length <= 40 && /[a-z]/i.test(part));
+    .filter(
+      (part) => part.length > 1 && part.length <= 40 && /[a-z]/i.test(part),
+    );
 }
 
 // ─── Contact ─────────────────────────────────────────────────────────────────
 
 function extractContact(text: string) {
   const email = text.match(/[\w.+-]+@[\w-]+\.[\w.]+/)?.[0] ?? null;
-  const phone = text.match(/(?:\+\d{1,3}[\s-]?)?\(?\d{2,4}\)?[\s-]?\d{3,4}[\s-]?\d{3,4}/)?.[0] ?? null;
-  const links = [...text.matchAll(/(?:https?:\/\/|www\.)[^\s)]+/gi)].map((m) => m[0]);
+  const phone =
+    text.match(
+      /(?:\+\d{1,3}[\s-]?)?\(?\d{2,4}\)?[\s-]?\d{3,4}[\s-]?\d{3,4}/,
+    )?.[0] ?? null;
+  const links = [...text.matchAll(/(?:https?:\/\/|www\.)[^\s)]+/gi)].map(
+    (m) => m[0],
+  );
   return { email, phone, links: [...new Set(links)] };
 }
 
@@ -297,23 +373,59 @@ export function parseResumeFacts(resumeText: string): ResumeFacts {
     });
   });
 
+  const summaryText = summaryLines.length > 0 ? summaryLines.join(" ") : null;
+  const uniqueSkills = [...new Set(declaredSkills)];
+
+  // Summary and skills become citable units alongside the bullets. Distinct id
+  // prefixes keep them recognisable in a citation: s1 = summary, k1 = skills.
+  const extraEvidence: ResumeBullet[] = [];
+
+  if (summaryText) {
+    extraEvidence.push({
+      id: "s1",
+      text: summaryText,
+      sectionId: "summary",
+      sectionKind: "summary",
+      isExplicitBullet: false,
+      wordCount: summaryText.split(/s+/).filter(Boolean).length,
+      quantities: extractQuantities(summaryText),
+      leadingVerb: null,
+    });
+  }
+
+  if (uniqueSkills.length > 0) {
+    const skillsText = uniqueSkills.join(", ");
+    extraEvidence.push({
+      id: "k1",
+      text: skillsText,
+      sectionId: "skills",
+      sectionKind: "skills",
+      isExplicitBullet: false,
+      wordCount: uniqueSkills.length,
+      quantities: [],
+      leadingVerb: null,
+    });
+  }
+
   return {
     sections,
     bullets,
-    declaredSkills: [...new Set(declaredSkills)],
+    evidence: [...bullets, ...extraEvidence],
+    declaredSkills: uniqueSkills,
     dateRanges: extractDateRanges(resumeText),
-    summaryText: summaryLines.length > 0 ? summaryLines.join(" ") : null,
+    summaryText,
+    totalExperienceYears: computeExperienceYears(extractDateRanges(resumeText)),
     contact: extractContact(resumeText),
     totalWords: resumeText.split(/\s+/).filter(Boolean).length,
   };
 }
 
-/** Look up bullets by id, ignoring ids that do not exist. */
+/** Look up evidence units by id, ignoring ids that do not exist. */
 export function bulletsByIds(
   facts: ResumeFacts,
   ids: readonly string[],
 ): ResumeBullet[] {
-  const index = new Map(facts.bullets.map((bullet) => [bullet.id, bullet]));
+  const index = new Map(facts.evidence.map((bullet) => [bullet.id, bullet]));
   return ids
     .map((id) => index.get(id))
     .filter((bullet): bullet is ResumeBullet => bullet !== undefined);

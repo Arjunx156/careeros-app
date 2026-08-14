@@ -252,6 +252,15 @@ model Analysis {
   stage      Int            @default(0)
   stageError String?        @map("stage_error")
 
+  /// Intermediate outputs handed between stages: the JD extraction, the parsed
+  /// resume facts (bullets with citable ids), and the raw judgment. Kept so a
+  /// later stage never has to re-derive — or re-ask the model for — earlier work.
+  stageData Json? @map("stage_data")
+
+  /// What the evidence validator caught: invented citations, unsupported
+  /// claims, redacted figures. Surfaced in the UI rather than hidden.
+  validationReport Json? @map("validation_report")
+
   // Overall + sub-scores (stage: score)
   overallScore           Int? @map("overall_score")
   experienceScore        Int? @map("experience_score")

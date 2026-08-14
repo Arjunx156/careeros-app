@@ -76,3 +76,48 @@ describe("zodToGemini", () => {
     expect(() => zodToGemini(z.date())).toThrow(/unsupported/i);
   });
 });
+
+describe("wrapper types", () => {
+  test("unwraps .default() to its inner type", () => {
+    const schema = z.object({ name: z.string().default("") });
+    expect(zodToGemini(schema)).toMatchObject({
+      type: "OBJECT",
+      properties: { name: { type: "STRING" } },
+    });
+  });
+
+  test("unwraps an array with a default", () => {
+    const schema = z.object({ ids: z.array(z.string()).default([]) });
+    expect(zodToGemini(schema)).toMatchObject({
+      properties: { ids: { type: "ARRAY", items: { type: "STRING" } } },
+    });
+  });
+
+  test("keeps a defaulted field required so the model answers it", () => {
+    const schema = z.object({ role: z.string().default("") });
+    expect((zodToGemini(schema) as { required: string[] }).required).toContain("role");
+  });
+
+  test("handles a default nested inside an object inside an array", () => {
+    const schema = z.object({
+      items: z.array(z.object({ tags: z.array(z.string()).default([]) })),
+    });
+    expect(() => zodToGemini(schema)).not.toThrow();
+  });
+});
+
+describe("evidence id pattern", () => {
+  test("accepts bullet, summary and skills ids", () => {
+    const id = z.string().regex(/^[bsk]\d+$/);
+    for (const value of ["b1", "b12", "s1", "k1"]) {
+      expect(id.safeParse(value).success).toBe(true);
+    }
+  });
+
+  test("rejects a malformed id", () => {
+    const id = z.string().regex(/^[bsk]\d+$/);
+    for (const value of ["x1", "bullet1", "b", "1"]) {
+      expect(id.safeParse(value).success).toBe(false);
+    }
+  });
+});

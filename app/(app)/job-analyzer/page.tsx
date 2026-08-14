@@ -4,7 +4,7 @@ import { KeyRound } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { AnalyzerForm } from "@/components/analyzer/analyzer-form";
 import { isAiConfigured } from "@/lib/ai/gemini";
-import { STAGE_LABELS } from "@/lib/ai/pipeline";
+import { STAGE_LABELS_CLIENT } from "@/lib/analysis/stage-labels";
 import { prisma } from "@/lib/db/prisma";
 import { getOwnerId } from "@/lib/db/user";
 import { BAND_TEXT, scoreBand } from "@/lib/score";
@@ -75,7 +75,7 @@ export default async function JobAnalyzerPage() {
       ) : null}
 
       <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
-        <AnalyzerForm resumes={resumeOptions} stageLabels={[...STAGE_LABELS]} />
+        <AnalyzerForm resumes={resumeOptions} stageLabels={[...STAGE_LABELS_CLIENT]} />
 
         <aside className="card h-fit p-5">
           <h2 className="text-section text-ink">Recent analyses</h2>

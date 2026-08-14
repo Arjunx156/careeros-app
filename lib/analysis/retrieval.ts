@@ -72,7 +72,8 @@ function buildIndex(bullets: readonly ResumeBullet[]) {
 export type RetrievalIndex = ReturnType<typeof buildIndex>;
 
 export function indexResume(facts: ResumeFacts): RetrievalIndex {
-  return buildIndex(facts.bullets);
+  // Evidence, not bullets: skills and summary content must be retrievable too.
+  return buildIndex(facts.evidence);
 }
 
 /** Top-k bullets for a query, best first. Never returns zero-score matches. */

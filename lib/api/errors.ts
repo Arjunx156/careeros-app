@@ -85,7 +85,29 @@ export function describeStageError(error: unknown): string {
     return "Gemini rate limit reached on the free tier. Wait a minute, then retry this step.";
   }
 
-  if (friendly.trim().length > 0) return friendly;
+  if (friendly.trim().length > 0) return truncate(friendly);
 
   return "This step failed for an unknown reason. Retry — everything before it is saved.";
+}
+
+/**
+ * Prisma echoes the entire failing query back in its error — hundreds of lines
+ * of JSON. Useful in a server log, useless in a toast. Keep the first line,
+ * which carries the actual diagnosis.
+ */
+const MAX_ERROR_CHARS = 300;
+
+function truncate(message: string): string {
+  const firstMeaningfulLine =
+    message
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line.length > 0 && !line.startsWith("{")) ?? message;
+
+  const candidate =
+    firstMeaningfulLine.length < 40 ? message.replace(/\s+/g, " ") : firstMeaningfulLine;
+
+  return candidate.length > MAX_ERROR_CHARS
+    ? `${candidate.slice(0, MAX_ERROR_CHARS).trimEnd()}…`
+    : candidate;
 }

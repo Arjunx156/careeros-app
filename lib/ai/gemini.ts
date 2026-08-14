@@ -177,6 +177,13 @@ export type GenerateOptions<T> = {
   responseSchema: Record<string, unknown>;
   temperature?: number;
   maxRetries?: number;
+  /**
+   * Gemini 3 models reason before answering, and those thought tokens are
+   * billed as output — a trivial call spent 169 thought tokens against 23 of
+   * actual answer. Turn it off for stages that are structured reading rather
+   * than reasoning.
+   */
+  thinking?: "on" | "off";
 };
 
 /**
@@ -195,15 +202,31 @@ export async function generateStructured<T>({
   responseSchema,
   temperature = 0.3,
   maxRetries = 2,
+  thinking = "on",
 }: GenerateOptions<T>): Promise<T> {
   const ai = getClient();
   const candidates = modelsFor(tier);
 
   let lastError: unknown;
 
+  /**
+   * Ceiling on total requests for one stage.
+   *
+   * Without it, a systematically malformed response retries maxRetries times
+   * against every model in the pool — 15 requests against a 20/day budget, all
+   * failing the same way. Quota failover is worth walking the pool for; a
+   * schema mismatch is not.
+   */
+  const MAX_TOTAL_ATTEMPTS = 4;
+  let totalAttempts = 0;
+
   // Outer loop walks the model pool; inner loop retries a single model.
   for (const model of candidates) {
+    if (totalAttempts >= MAX_TOTAL_ATTEMPTS) break;
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      if (totalAttempts >= MAX_TOTAL_ATTEMPTS) break;
+      totalAttempts += 1;
       try {
         const response = await ai.models.generateContent({
           model,
@@ -213,6 +236,9 @@ export async function generateStructured<T>({
             temperature,
             responseMimeType: "application/json",
             responseSchema,
+            ...(thinking === "off"
+              ? { thinkingConfig: { thinkingBudget: 0 } }
+              : {}),
           },
         });
 

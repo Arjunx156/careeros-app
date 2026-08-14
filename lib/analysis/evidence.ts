@@ -46,15 +46,15 @@ function evidenceTextFor(
   facts: ResumeFacts,
   ids: readonly string[],
 ): string {
-  const index = new Map(facts.bullets.map((b) => [b.id, b.text]));
+  const index = new Map(facts.evidence.map((b) => [b.id, b.text]));
   return ids.map((id) => index.get(id) ?? "").join(" ");
 }
 
 /** Every quantity that legitimately exists anywhere in the resume. */
 function resumeQuantities(facts: ResumeFacts): Set<string> {
   const all = new Set<string>();
-  for (const bullet of facts.bullets) {
-    for (const quantity of bullet.quantities) all.add(quantity);
+  for (const item of facts.evidence) {
+    for (const quantity of item.quantities) all.add(quantity);
   }
   for (const range of facts.dateRanges) {
     if (range.startYear) all.add(String(range.startYear));
@@ -78,7 +78,7 @@ export function validateClaim<T extends EvidencedClaim>(
   facts: ResumeFacts,
   allowedQuantities: Set<string>,
 ): ValidationOutcome<T> {
-  const known = new Set(facts.bullets.map((b) => b.id));
+  const known = new Set(facts.evidence.map((b) => b.id));
 
   const validIds = claim.supportingBulletIds.filter((id) => known.has(id));
   const invalidIds = claim.supportingBulletIds.filter((id) => !known.has(id));

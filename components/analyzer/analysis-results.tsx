@@ -42,6 +42,23 @@ function Section({
   );
 }
 
+/**
+ * Shown when the evidence validator could not tie a claim to a real resume
+ * bullet. The claim is still displayed — hiding it would be its own kind of
+ * dishonesty — but it is labelled so it is never mistaken for a finding.
+ */
+function NotEvidencedChip() {
+  return (
+    <span
+      title="No supporting line was found on your resume"
+      className="inline-flex items-center gap-1 rounded-[var(--radius-badge)] border border-warning/30 bg-warning-bg px-1.5 py-0.5 text-label font-medium text-warning"
+    >
+      <AlertTriangle aria-hidden className="size-3" />
+      Not evidenced
+    </span>
+  );
+}
+
 function StatusChip({ status }: { status: RequirementStatus }) {
   const style = REQUIREMENT_STYLE[status];
   return (
@@ -160,8 +177,25 @@ export function AnalysisResults({ analysis }: { analysis: AnalysisRecord }) {
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <h3 className="text-card-title text-ink">{gap.requirement}</h3>
-                  <StatusChip status={gap.status} />
+                  <div className="flex items-center gap-1.5">
+                    {gap.unsupported ? <NotEvidencedChip /> : null}
+                    <StatusChip status={gap.status} />
+                  </div>
                 </div>
+
+                {gap.unsupported ? (
+                  <p className="mt-2 rounded-[var(--radius-badge)] bg-warning-bg px-2.5 py-1.5 text-label text-ink-secondary">
+                    The AI could not point to a specific line on your resume for
+                    this. Treat it as a prompt to check, not a finding.
+                  </p>
+                ) : gap.supportingBulletIds && gap.supportingBulletIds.length > 0 ? (
+                  <p className="mt-2 text-label text-ink-muted">
+                    Based on{" "}
+                    <span className="font-mono">
+                      {gap.supportingBulletIds.join(", ")}
+                    </span>
+                  </p>
+                ) : null}
 
                 <dl className="mt-3 space-y-2">
                   <div>

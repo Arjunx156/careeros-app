@@ -167,3 +167,25 @@ describe("bulletsByIds", () => {
     expect(found.map((b) => b.id)).toEqual(["b1"]);
   });
 });
+
+describe("computeExperienceYears", () => {
+  test("sums sequential roles", () => {
+    const f = parseResumeFacts("Role A (2019-2021)\nRole B (2021-2023)");
+    expect(f.totalExperienceYears).toBe(4);
+  });
+
+  test("merges overlapping roles rather than double-counting", () => {
+    const f = parseResumeFacts("Role A (2019-2023)\nRole B (2020-2022)");
+    expect(f.totalExperienceYears).toBe(4);
+  });
+
+  test("treats a current role as running to this year", () => {
+    const start = new Date().getFullYear() - 3;
+    const f = parseResumeFacts(`Role A (${start}-Present)`);
+    expect(f.totalExperienceYears).toBe(3);
+  });
+
+  test("returns null when no dates are present", () => {
+    expect(parseResumeFacts("No dates here").totalExperienceYears).toBeNull();
+  });
+});
