@@ -242,7 +242,7 @@ export function parseResumeFacts(resumeText: string): ResumeFacts {
   };
   sections.push(currentSection);
 
-  let summaryLines: string[] = [];
+  const summaryLines: string[] = [];
 
   lines.forEach((line, index) => {
     const trimmed = line.trim();

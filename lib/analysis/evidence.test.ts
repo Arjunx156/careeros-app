@@ -24,7 +24,7 @@ const textOf = (claim: Claim) => claim.reasoning;
 
 describe("validateClaims — citation checking", () => {
   test("keeps a claim that cites a real bullet", () => {
-    const { claims, report } = validateClaims(
+    const { claims, report } = validateClaims<Claim>(
       [{ requirement: "SQL", reasoning: "Shown in dashboards work.", supportingBulletIds: ["b1"] }],
       textOf,
       facts,
@@ -35,7 +35,7 @@ describe("validateClaims — citation checking", () => {
   });
 
   test("drops a citation to a bullet that does not exist", () => {
-    const { claims, report } = validateClaims(
+    const { claims, report } = validateClaims<Claim>(
       [{ requirement: "Kubernetes", reasoning: "Clearly demonstrated.", supportingBulletIds: ["b99"] }],
       textOf,
       facts,
@@ -45,7 +45,7 @@ describe("validateClaims — citation checking", () => {
   });
 
   test("marks a claim unsupported once all its citations are invalid", () => {
-    const { claims } = validateClaims(
+    const { claims } = validateClaims<Claim>(
       [{ requirement: "Kubernetes", reasoning: "Strong experience.", supportingBulletIds: ["b99", "b100"] }],
       textOf,
       facts,
@@ -55,7 +55,7 @@ describe("validateClaims — citation checking", () => {
   });
 
   test("keeps the valid subset when a claim mixes real and invented citations", () => {
-    const { claims } = validateClaims(
+    const { claims } = validateClaims<Claim>(
       [{ requirement: "Reporting", reasoning: "Built dashboards.", supportingBulletIds: ["b2", "b77"] }],
       textOf,
       facts,
@@ -65,7 +65,7 @@ describe("validateClaims — citation checking", () => {
   });
 
   test("overrides a model that claims support while citing nothing", () => {
-    const { claims } = validateClaims(
+    const { claims } = validateClaims<Claim>(
       [{ requirement: "SQL", reasoning: "Obviously qualified.", supportingBulletIds: [], unsupported: false }],
       textOf,
       facts,
@@ -74,7 +74,7 @@ describe("validateClaims — citation checking", () => {
   });
 
   test("counts unsupported claims across a batch", () => {
-    const { report } = validateClaims(
+    const { report } = validateClaims<Claim>(
       [
         { requirement: "A", reasoning: "x", supportingBulletIds: ["b1"] },
         { requirement: "B", reasoning: "x", supportingBulletIds: ["b99"] },
@@ -90,7 +90,7 @@ describe("validateClaims — citation checking", () => {
 
 describe("validateClaims — number checking", () => {
   test("accepts a figure that appears in the resume", () => {
-    const { report } = validateClaims(
+    const { report } = validateClaims<Claim>(
       [{ requirement: "Reporting", reasoning: "Tracked 12 KPIs.", supportingBulletIds: ["b2"] }],
       textOf,
       facts,
@@ -99,7 +99,7 @@ describe("validateClaims — number checking", () => {
   });
 
   test("flags a figure that appears nowhere", () => {
-    const { report } = validateClaims(
+    const { report } = validateClaims<Claim>(
       [{ requirement: "Reporting", reasoning: "Improved efficiency by 87%.", supportingBulletIds: ["b2"] }],
       textOf,
       facts,
@@ -108,7 +108,7 @@ describe("validateClaims — number checking", () => {
   });
 
   test("accepts a year drawn from a date range", () => {
-    const { report } = validateClaims(
+    const { report } = validateClaims<Claim>(
       [{ requirement: "Tenure", reasoning: "Since 2023.", supportingBulletIds: ["b1"] }],
       textOf,
       facts,
