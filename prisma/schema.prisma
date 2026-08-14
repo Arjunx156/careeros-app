@@ -140,6 +140,33 @@ enum FollowUpStatus {
   rescheduled
 }
 
+// ─── STORED FILES ────────────────────────────────────────────────────────────
+// Uploaded resumes and generated documents, held in Postgres.
+//
+// Vercel's filesystem is read-only, so files cannot live on disk in production.
+// The alternative was a second service (Vercel Blob) with its own token and
+// dashboard; for a single-user app storing a handful of PDFs, keeping them in
+// the database that already exists is one less thing to configure and one less
+// thing to go wrong. The bytes are in their own table so no ordinary query
+// accidentally loads them.
+
+model StoredFile {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  /// Logical path, e.g. "<userId>/resumes/<id>.pdf". Unique so a re-upload
+  /// replaces rather than silently duplicates.
+  pathname    String   @unique
+  contentType String   @map("content_type")
+  size        Int
+  data        Bytes
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("stored_files")
+}
+
 // ─── USER ────────────────────────────────────────────────────────────────────
 
 model User {
@@ -160,6 +187,7 @@ model User {
   messages         Message[]
   followUps        FollowUp[]
   optimizedResumes OptimizedResume[]
+  storedFiles      StoredFile[]
 
   @@map("users")
 }

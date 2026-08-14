@@ -3,7 +3,7 @@ import { apiError, apiSuccess, apiValidationError, handleRoute } from "@/lib/api
 import { prisma } from "@/lib/db/prisma";
 import { getOwnerId } from "@/lib/db/user";
 import { updateResumeSchema } from "@/lib/resume/schema";
-import { getStorage } from "@/lib/storage";
+import { deleteFile } from "@/lib/storage";
 
 export async function GET(
   _request: NextRequest,
@@ -80,7 +80,7 @@ export async function DELETE(
     // Delete the row first: an orphaned file is harmless, but a row pointing at
     // a file that no longer exists breaks every page that renders it.
     await prisma.resumeVersion.delete({ where: { id } });
-    await getStorage().delete(resume.filePathname).catch((error) => {
+    await deleteFile(userId, resume.filePathname).catch((error) => {
       console.error("[resumes] file delete failed:", error);
     });
 

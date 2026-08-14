@@ -8,7 +8,7 @@ import { parseResumeFacts } from "@/lib/analysis/facts";
 import { generateOptimizedResume } from "@/lib/resume/generate";
 import { renderResumePdf } from "@/lib/resume/render-pdf";
 import { renderResumeDocx } from "@/lib/resume/render-docx";
-import { getStorage } from "@/lib/storage";
+import { generatedPath, putFile } from "@/lib/storage";
 import type { Prisma } from "@/lib/generated/prisma/client";
 
 // Generation plus two document renders.
@@ -79,7 +79,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const storage = getStorage();
     const id = crypto.randomUUID();
     const baseName = `${analysis.jobDescription.company} ${analysis.jobDescription.role}`
       .replace(/[^a-z0-9 -]/gi, "")
@@ -91,9 +90,10 @@ export async function POST(request: NextRequest) {
     ]);
 
     const [pdf, docx] = await Promise.all([
-      storage.put(`${userId}/optimized/${id}.pdf`, pdfBuffer, "application/pdf"),
-      storage.put(
-        `${userId}/optimized/${id}.docx`,
+      putFile(userId, generatedPath(userId, id, "pdf"), pdfBuffer, "application/pdf"),
+      putFile(
+        userId,
+        generatedPath(userId, id, "docx"),
         docxBuffer,
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       ),

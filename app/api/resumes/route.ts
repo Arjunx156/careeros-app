@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { getOwnerId } from "@/lib/db/user";
 import { extractPdfText } from "@/lib/resume/extract";
 import { createResumeSchema, validateResumeFile } from "@/lib/resume/schema";
-import { getStorage, resumePath } from "@/lib/storage";
+import { deleteFile, putFile, resumePath } from "@/lib/storage";
 
 // Parsing a PDF is CPU-bound and can take a few seconds on a large file.
 export const maxDuration = 60;
@@ -75,9 +75,9 @@ export async function POST(request: NextRequest) {
       where: { userId, name },
     });
 
-    const storage = getStorage();
     const id = crypto.randomUUID();
-    const stored = await storage.put(
+    const stored = await putFile(
+      userId,
       resumePath(userId, id),
       buffer,
       "application/pdf",
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
       return apiSuccess(resume, 201);
     } catch (error) {
       // Never leave a file behind with no database row pointing at it.
-      await storage.delete(stored.pathname).catch(() => {});
+      await deleteFile(userId, stored.pathname).catch(() => {});
       throw error;
     }
   });

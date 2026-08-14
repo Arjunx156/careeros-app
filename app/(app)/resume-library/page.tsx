@@ -1,11 +1,10 @@
-import { FileText, HardDrive } from "lucide-react";
+import { FileText } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { ResumeCard } from "@/components/resume/resume-card";
 import { UploadResumeDialog } from "@/components/resume/upload-resume-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { prisma } from "@/lib/db/prisma";
 import { getOwnerId } from "@/lib/db/user";
-import { isLocalStorage } from "@/lib/storage";
 
 export const metadata = { title: "Resume Library" };
 export const dynamic = "force-dynamic";
@@ -38,19 +37,7 @@ export default async function ResumeLibraryPage() {
         actions={<UploadResumeDialog isFirst={resumes.length === 0} />}
       />
 
-      {isLocalStorage() ? (
-        <div className="mb-5 flex items-start gap-2.5 rounded-[var(--radius-card)] border border-warning/20 bg-warning-bg px-4 py-3">
-          <HardDrive aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
-          <p className="text-body text-ink-secondary">
-            <span className="font-medium text-ink">Files are stored on this machine.</span>{" "}
-            Add <code className="font-mono text-[13px]">BLOB_READ_WRITE_TOKEN</code> to
-            switch to Vercel Blob — required before deploying, since Vercel&apos;s
-            filesystem is read-only.
-          </p>
-        </div>
-      ) : null}
-
-      {resumes.length === 0 ? (
+            {resumes.length === 0 ? (
         <EmptyState
           icon={FileText}
           title="No resumes yet"
