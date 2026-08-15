@@ -12,20 +12,24 @@ const nextConfig: NextConfig = {
   // the bundler does not try to trace their optional native paths.
   serverExternalPackages: ["pdf-parse"],
 
-  // pdf-parse's pdfjs-dist dependency polyfills Node's missing DOMMatrix /
-  // ImageData / Path2D globals via `require("@napi-rs/canvas")` at runtime,
-  // wrapped in a try/catch that only warns on failure (see
-  // node_modules/pdfjs-dist/legacy/build/pdf.mjs). That require uses a
-  // dynamically created `require` (via `createRequire`), which output file
-  // tracing does not follow — so on Vercel it can't find even the base
-  // `@napi-rs/canvas` package (confirmed via runtime logs: "Cannot find
-  // module '@napi-rs/canvas'"), and every extraction throws "DOMMatrix is
-  // not defined". Force both the base package and its Linux binary (Vercel's
-  // function runtime) into the trace explicitly.
+  // pdf-parse's pdfjs-dist dependency reaches for two kinds of files that
+  // output file tracing keeps missing, because both are loaded through
+  // dynamic require()/import() rather than a static one it can follow:
+  //   1. `@napi-rs/canvas` (+ its platform binary), used to polyfill Node's
+  //      missing DOMMatrix/ImageData/Path2D globals (confirmed via runtime
+  //      logs: "Cannot find module '@napi-rs/canvas'").
+  //   2. `pdf.worker.mjs` and friends under pdfjs-dist itself — even in
+  //      Node's synchronous "fake worker" fallback, pdfjs still imports the
+  //      worker module inline (confirmed: "Setting up fake worker failed:
+  //      Cannot find module '.../pdfjs-dist/legacy/build/pdf.worker.mjs'").
+  // Trace the whole pdfjs-dist tree rather than individual files — it has
+  // more runtime-loaded assets (cmaps, standard fonts) than are worth
+  // enumerating one crash at a time.
   outputFileTracingIncludes: {
     "/api/resumes": [
       "./node_modules/@napi-rs/canvas/**",
       "./node_modules/@napi-rs/canvas-linux-x64-gnu/**",
+      "./node_modules/pdfjs-dist/**",
     ],
   },
 };
