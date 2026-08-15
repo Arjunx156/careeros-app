@@ -15,14 +15,18 @@ const nextConfig: NextConfig = {
   // pdf-parse's pdfjs-dist dependency polyfills Node's missing DOMMatrix /
   // ImageData / Path2D globals via `require("@napi-rs/canvas")` at runtime,
   // wrapped in a try/catch that only warns on failure (see
-  // node_modules/pdfjs-dist/legacy/build/pdf.mjs). Output file tracing misses
-  // @napi-rs/canvas's native binary because it's reached through an
-  // externalized package rather than a normal bundled import, so on Vercel
-  // that require silently fails and every extraction throws "DOMMatrix is
-  // not defined". Force the Linux binary (Vercel's function runtime) into
-  // the trace explicitly.
+  // node_modules/pdfjs-dist/legacy/build/pdf.mjs). That require uses a
+  // dynamically created `require` (via `createRequire`), which output file
+  // tracing does not follow — so on Vercel it can't find even the base
+  // `@napi-rs/canvas` package (confirmed via runtime logs: "Cannot find
+  // module '@napi-rs/canvas'"), and every extraction throws "DOMMatrix is
+  // not defined". Force both the base package and its Linux binary (Vercel's
+  // function runtime) into the trace explicitly.
   outputFileTracingIncludes: {
-    "/api/resumes": ["./node_modules/@napi-rs/canvas-linux-x64-gnu/**"],
+    "/api/resumes": [
+      "./node_modules/@napi-rs/canvas/**",
+      "./node_modules/@napi-rs/canvas-linux-x64-gnu/**",
+    ],
   },
 };
 
