@@ -61,6 +61,10 @@ export async function extractPdfText(data: Buffer): Promise<ExtractionResult> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
+    // The client only ever sees the friendly reason below — log the real
+    // cause server-side or every "corrupt" report is a dead end.
+    console.error("[extract] pdf-parse failed:", error);
+
     if (/password|encrypt/i.test(message)) {
       return {
         ok: false,
