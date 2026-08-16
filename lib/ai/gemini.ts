@@ -1,6 +1,6 @@
 import "server-only";
 
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import type { z } from "zod";
 
 /**
@@ -173,6 +173,29 @@ function isRetryable(error: unknown): boolean {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Starting with Gemini 3.5, the legacy `thinkingBudget` knob is rejected
+ * outright ("will result in a user error if set" — @google/genai's own
+ * ReinforcementTuningHyperParameters.thinkingBudget doc) in favor of
+ * `thinkingLevel`. The model pools mix pre-3.5 and 3.5+ models, so which
+ * field to send has to follow the model actually being called rather than
+ * being fixed once — sending the wrong one is a 400 INVALID_ARGUMENT with no
+ * further detail, which is exactly what a fixed `thinkingBudget: 0` produced
+ * against gemini-3.5-flash/gemini-3.6-flash.
+ */
+function usesThinkingLevel(model: string): boolean {
+  const version = model.match(/gemini-(\d+(?:\.\d+)?)/)?.[1];
+  return version !== undefined && parseFloat(version) >= 3.5;
+}
+
+function thinkingConfigFor(model: string, thinking: "on" | "off"): Record<string, unknown> {
+  if (thinking !== "off") return {};
+
+  return usesThinkingLevel(model)
+    ? { thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL } }
+    : { thinkingConfig: { thinkingBudget: 0 } };
+}
+
 export type GenerateOptions<T> = {
   tier: ModelTier;
   systemInstruction: string;
@@ -242,9 +265,7 @@ export async function generateStructured<T>({
             temperature,
             responseMimeType: "application/json",
             responseSchema,
-            ...(thinking === "off"
-              ? { thinkingConfig: { thinkingBudget: 0 } }
-              : {}),
+            ...thinkingConfigFor(model, thinking),
           },
         });
 
