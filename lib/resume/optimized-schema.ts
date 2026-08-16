@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cappedArray } from "@/lib/ai/zod-to-gemini";
 
 /**
  * Structure of an AI-optimized resume.
@@ -26,7 +27,7 @@ export const optimizedExperienceSchema = z.object({
   location: z.string().default(""),
   /** Copied verbatim from the source — never reformatted or inferred. */
   dates: z.string().default(""),
-  bullets: z.array(optimizedBulletSchema).max(8),
+  bullets: cappedArray(optimizedBulletSchema, 8),
 });
 
 export const optimizedProjectSchema = z.object({
@@ -34,7 +35,7 @@ export const optimizedProjectSchema = z.object({
   /** Optional context: coursework, hackathon, personal. */
   context: z.string().default(""),
   dates: z.string().default(""),
-  bullets: z.array(optimizedBulletSchema).max(5),
+  bullets: cappedArray(optimizedBulletSchema, 5),
 });
 
 export const optimizedEducationSchema = z.object({
@@ -46,7 +47,7 @@ export const optimizedEducationSchema = z.object({
 
 export const optimizedSkillGroupSchema = z.object({
   label: z.string().min(1),
-  items: z.array(z.string()).max(20),
+  items: cappedArray(z.string(), 20),
 });
 
 export const optimizedResumeSchema = z.object({
@@ -56,16 +57,16 @@ export const optimizedResumeSchema = z.object({
     location: z.string().default(""),
     email: z.string().default(""),
     phone: z.string().default(""),
-    links: z.array(z.string()).max(4).default([]),
+    links: cappedArray(z.string(), 4).default([]),
   }),
   /** Tailored professional summary. */
   summary: z.string(),
-  experience: z.array(optimizedExperienceSchema).max(8),
-  projects: z.array(optimizedProjectSchema).max(6).default([]),
-  education: z.array(optimizedEducationSchema).max(5),
-  skillGroups: z.array(optimizedSkillGroupSchema).max(5),
+  experience: cappedArray(optimizedExperienceSchema, 8),
+  projects: cappedArray(optimizedProjectSchema, 6).default([]),
+  education: cappedArray(optimizedEducationSchema, 5),
+  skillGroups: cappedArray(optimizedSkillGroupSchema, 5),
   /** What changed and why, shown beside the preview — not part of the document. */
-  changeNotes: z.array(z.string()).max(10).default([]),
+  changeNotes: cappedArray(z.string(), 10).default([]),
 });
 
 export type OptimizedResume = z.infer<typeof optimizedResumeSchema>;

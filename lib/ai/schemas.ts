@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cappedArray } from "@/lib/ai/zod-to-gemini";
 
 /**
  * Output schemas for the three LLM stages.
@@ -41,14 +42,14 @@ export const jdExtractionSchema = z.object({
   company: z.string().default(""),
   role: z.string().default(""),
   seniority: z.string().default(""),
-  mustHave: z.array(requirement).max(12),
-  niceToHave: z.array(requirement).max(10),
-  responsibilities: z.array(z.string()).max(10),
-  softSkills: z.array(z.string()).max(8),
-  educationRequirements: z.array(z.string()).max(5),
-  experienceRequirements: z.array(z.string()).max(5),
+  mustHave: cappedArray(requirement, 12),
+  niceToHave: cappedArray(requirement, 10),
+  responsibilities: cappedArray(z.string(), 10),
+  softSkills: cappedArray(z.string(), 8),
+  educationRequirements: cappedArray(z.string(), 5),
+  experienceRequirements: cappedArray(z.string(), 5),
   /** Terms worth checking for in the resume — matching is done in code. */
-  keyTerms: z.array(z.string()).max(30),
+  keyTerms: cappedArray(z.string(), 30),
 });
 export type JdExtraction = z.infer<typeof jdExtractionSchema>;
 
@@ -74,26 +75,13 @@ const bulletJudgment = z.object({
   impact: score,
   relevance: score,
   starStructure: score,
-  issues: z.array(z.string()).max(4),
+  issues: cappedArray(z.string(), 4),
   /** Rewrite. Must not introduce figures absent from the original. */
   suggested: z.string(),
   whatChanged: z.string(),
 });
 
-/**
- * Split across two Gemini calls rather than one combined schema.
- *
- * requirementJudgment and bulletJudgment are each a handful of fields deep,
- * and either one's array paired with the scores below decodes fine on its
- * own. Combined into one responseSchema, Gemini rejects the request outright
- * with a bare 400 INVALID_ARGUMENT and no further detail — confirmed by
- * bisecting the schema directly against the API: two full-shape copies of
- * bulletJudgment alone (no requirementJudgment involved) already trip it,
- * while the same two arrays with trivial one-field item shapes do not. This
- * is a real complexity/size ceiling on structured output, not a bug in any
- * one field's shape.
- */
-export const judgmentScoresSchema = z.object({
+export const judgmentSchema = z.object({
   // Scores the model is genuinely better placed to judge than code.
   experienceScore: score,
   skillsScore: score,
@@ -104,17 +92,10 @@ export const judgmentScoresSchema = z.object({
   overallRecruiterAppeal: score,
   scoreReasoning: z.string(),
 
-  requirements: z.array(requirementJudgment).max(20),
+  requirements: cappedArray(requirementJudgment, 20),
+  bullets: cappedArray(bulletJudgment, 15),
 });
-export type JudgmentScores = z.infer<typeof judgmentScoresSchema>;
-
-export const judgmentBulletsSchema = z.object({
-  bullets: z.array(bulletJudgment).max(15),
-});
-export type JudgmentBullets = z.infer<typeof judgmentBulletsSchema>;
-
-/** The two calls' results merged back into the one shape the rest of the app expects. */
-export type Judgment = JudgmentScores & JudgmentBullets;
+export type Judgment = z.infer<typeof judgmentSchema>;
 
 // ─── Stage 3: Synthesis (deep tier, prior stage outputs only) ────────────────
 
@@ -137,8 +118,8 @@ const recruiterAnswer = z.object({
 export const synthesisSchema = z.object({
   recruiterVerdict: z.enum(["strong", "potential", "weak"]),
   recruiterVerdictReason: z.string(),
-  recruiterAnswers: z.array(recruiterAnswer).max(8),
-  actionPlan: z.array(actionItem).max(8),
+  recruiterAnswers: cappedArray(recruiterAnswer, 8),
+  actionPlan: cappedArray(actionItem, 8),
   recommendedSummary: z.string(),
   summaryWhyBetter: z.string(),
 });

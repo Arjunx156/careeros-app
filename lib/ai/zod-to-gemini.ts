@@ -9,18 +9,27 @@ import { z } from "zod";
  * of bug.
  *
  * Supports the subset the analysis pipeline uses: objects, arrays, strings,
- * numbers, integers, booleans, enums, and optional/nullable wrappers.
+ * numbers, integers, booleans, enums, and optional/nullable/transform wrappers.
+ *
+ * DELIBERATELY OMITS size and range constraints (`maxItems`, `minItems`,
+ * `maximum`, `minimum`), even though Gemini accepts them on small schemas.
+ * They count against a complexity budget on `responseSchema`, and on the
+ * larger schemas here that budget is already tight: emitting them made both
+ * the judgment stage and the resume optimizer fail 100% of the time with a
+ * bare 400 INVALID_ARGUMENT and no indication of the cause. Verified by
+ * sending the same two schemas with and without those keywords — identical
+ * apart from the constraints, failing with and succeeding without, on two
+ * independent models.
+ *
+ * Bound array length with `cappedArray` in the Zod schema instead: it trims
+ * surplus items on our side, which costs no schema budget and beats
+ * discarding a whole expensive response over one extra item.
  */
 export type GeminiSchema = Record<string, unknown>;
 
 type ZodCheckDef = {
   check?: string;
   format?: string;
-  /** Present on max_length/min_length (array/string length bounds). */
-  maximum?: number;
-  minimum?: number;
-  /** Present on less_than/greater_than (number range bounds — `.max()`/`.min()`). */
-  value?: number;
 };
 
 type ZodInternals = {
@@ -30,6 +39,8 @@ type ZodInternals = {
   innerType?: z.ZodType;
   entries?: Record<string, string>;
   checks?: Array<{ _zod?: { def?: ZodCheckDef } }>;
+  /** `pipe` (a `.transform()`): `in` is the shape the model must produce. */
+  in?: z.ZodType;
 };
 
 function internals(schema: z.ZodType): ZodInternals {
@@ -44,34 +55,6 @@ function isInteger(def: ZodInternals): boolean {
   return checkDefs(def).some(
     (check) => check.format === "safeint" || check.check === "int",
   );
-}
-
-/** `maxItems`/`minItems` for `.max()`/`.min()` on `z.array()` — Gemini honours both. */
-function arrayBounds(def: ZodInternals): GeminiSchema {
-  const bounds: GeminiSchema = {};
-  for (const check of checkDefs(def)) {
-    if (check.check === "max_length" && check.maximum !== undefined) {
-      bounds.maxItems = check.maximum;
-    }
-    if (check.check === "min_length" && check.minimum !== undefined) {
-      bounds.minItems = check.minimum;
-    }
-  }
-  return bounds;
-}
-
-/** `maximum`/`minimum` for `.max()`/`.min()` on `z.number()` — same reasoning as arrayBounds. */
-function numberBounds(def: ZodInternals): GeminiSchema {
-  const bounds: GeminiSchema = {};
-  for (const check of checkDefs(def)) {
-    if (check.check === "less_than" && check.value !== undefined) {
-      bounds.maximum = check.value;
-    }
-    if (check.check === "greater_than" && check.value !== undefined) {
-      bounds.minimum = check.value;
-    }
-  }
-  return bounds;
 }
 
 export function zodToGemini(schema: z.ZodType): GeminiSchema {
@@ -101,14 +84,13 @@ export function zodToGemini(schema: z.ZodType): GeminiSchema {
       return {
         type: "ARRAY",
         items: def.element ? zodToGemini(def.element) : { type: "STRING" },
-        ...arrayBounds(def),
       };
 
     case "string":
       return { type: "STRING" };
 
     case "number":
-      return { type: isInteger(def) ? "INTEGER" : "NUMBER", ...numberBounds(def) };
+      return { type: isInteger(def) ? "INTEGER" : "NUMBER" };
 
     case "boolean":
       return { type: "BOOLEAN" };
@@ -132,7 +114,34 @@ export function zodToGemini(schema: z.ZodType): GeminiSchema {
       return { ...inner, nullable: true };
     }
 
+    // A `.transform()` (how `cappedArray` trims surplus items). The model
+    // produces the input side; the transform runs after parsing, on our side,
+    // so the wire schema is `in` — never the transformed output.
+    case "pipe":
+      return def.in ? zodToGemini(def.in) : { type: "STRING" };
+
     default:
       throw new Error(`zodToGemini: unsupported Zod type "${def.type}"`);
   }
+}
+
+/**
+ * An array with a soft cap: surplus items are trimmed, not rejected.
+ *
+ * The counterpart to this module's refusal to emit `maxItems` (see above).
+ * `z.array(x).max(n)` would fail the whole parse when a model returns n+1
+ * items, discarding a response that cost a request against a small daily
+ * quota and was otherwise perfectly good — that is how the JD extraction
+ * stage broke when a model returned 11 responsibilities against a cap of 10.
+ * The cap exists to keep lists presentable, not to police correctness, so
+ * trimming is the honest behaviour.
+ */
+export function cappedArray<T extends z.ZodType>(
+  item: T,
+  max: number,
+): z.ZodType<z.output<T>[], z.input<T>[]> {
+  return z.array(item).transform((items) => items.slice(0, max)) as unknown as z.ZodType<
+    z.output<T>[],
+    z.input<T>[]
+  >;
 }

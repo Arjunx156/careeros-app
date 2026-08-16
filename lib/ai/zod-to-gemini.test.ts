@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { z } from "zod";
-import { zodToGemini } from "@/lib/ai/zod-to-gemini";
+import { cappedArray, zodToGemini } from "@/lib/ai/zod-to-gemini";
 
 describe("zodToGemini", () => {
   test("maps primitives", () => {
@@ -76,24 +76,58 @@ describe("zodToGemini", () => {
     expect(() => zodToGemini(z.date())).toThrow(/unsupported/i);
   });
 
-  test("propagates .max()/.min() on arrays as maxItems/minItems", () => {
-    // Without this, Gemini has no way to know an array must stay short, and a
-    // response that is schema-shaped but too long fails our own Zod
-    // re-validation downstream — the model never even knew the limit existed.
+  // These two guard a regression that took the judgment stage and the resume
+  // optimizer down completely: emitting size/range constraints pushes a large
+  // responseSchema past Gemini's complexity budget, and it rejects the whole
+  // request with a bare 400 INVALID_ARGUMENT. Bound length with cappedArray
+  // instead. See this module's header comment.
+  test("does NOT emit maxItems/minItems for .max()/.min() on arrays", () => {
     expect(zodToGemini(z.array(z.string()).max(10).min(2))).toEqual({
       type: "ARRAY",
       items: { type: "STRING" },
-      maxItems: 10,
-      minItems: 2,
     });
   });
 
-  test("propagates .max()/.min() on numbers as maximum/minimum", () => {
+  test("does NOT emit maximum/minimum for .max()/.min() on numbers", () => {
     expect(zodToGemini(z.number().int().min(0).max(100))).toEqual({
       type: "INTEGER",
-      maximum: 100,
-      minimum: 0,
     });
+  });
+
+  test("emits a plain array for cappedArray, with the cap applied on our side", () => {
+    expect(zodToGemini(cappedArray(z.string(), 3))).toEqual({
+      type: "ARRAY",
+      items: { type: "STRING" },
+    });
+  });
+});
+
+describe("cappedArray", () => {
+  test("trims surplus items instead of failing the parse", () => {
+    const schema = cappedArray(z.string(), 3);
+    expect(schema.parse(["a", "b", "c", "d", "e"])).toEqual(["a", "b", "c"]);
+  });
+
+  test("leaves an array within the cap untouched", () => {
+    expect(cappedArray(z.string(), 3).parse(["a", "b"])).toEqual(["a", "b"]);
+  });
+
+  test("still rejects items of the wrong type", () => {
+    expect(cappedArray(z.string(), 3).safeParse([1, 2]).success).toBe(false);
+  });
+
+  test("trims arrays of objects, validating each surviving item", () => {
+    const schema = cappedArray(z.object({ id: z.string() }), 2);
+    expect(schema.parse([{ id: "a" }, { id: "b" }, { id: "c" }])).toEqual([
+      { id: "a" },
+      { id: "b" },
+    ]);
+  });
+
+  test("composes with .default() for an omitted key", () => {
+    const schema = z.object({ tags: cappedArray(z.string(), 2).default([]) });
+    expect(schema.parse({})).toEqual({ tags: [] });
+    expect(schema.parse({ tags: ["x", "y", "z"] })).toEqual({ tags: ["x", "y"] });
   });
 });
 

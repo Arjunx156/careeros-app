@@ -2,7 +2,7 @@ import "server-only";
 
 import { z } from "zod";
 import { generateStructured } from "@/lib/ai/gemini";
-import { zodToGemini } from "@/lib/ai/zod-to-gemini";
+import { cappedArray, zodToGemini } from "@/lib/ai/zod-to-gemini";
 import type { MessageTypeValue } from "@/lib/contacts/status";
 
 /**
@@ -22,7 +22,7 @@ export const generatedMessageSchema = z.object({
    * What in the message is specific to this person. If the model cannot fill
    * this in, the message is generic and the UI says so.
    */
-  personalizationUsed: z.array(z.string()).max(4).default([]),
+  personalizationUsed: cappedArray(z.string(), 4).default([]),
   characterCount: z.number().int().default(0),
 });
 

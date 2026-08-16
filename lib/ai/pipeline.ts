@@ -5,8 +5,7 @@ import { generateStructured } from "@/lib/ai/gemini";
 import { prompts } from "@/lib/ai/prompts";
 import {
   jdExtractionSchema,
-  judgmentBulletsSchema,
-  judgmentScoresSchema,
+  judgmentSchema,
   synthesisSchema,
   type JdExtraction,
   type Judgment,
@@ -209,40 +208,20 @@ export const STAGES: Stage[] = [
         overused: [],
       };
 
-      // Two calls, not one: a combined scores+requirements+bullets schema
-      // trips a real size/complexity ceiling on Gemini's structured output
-      // (confirmed by bisecting it directly against the API — see
-      // judgmentScoresSchema's doc comment). Each half decodes fine alone,
-      // and they're independent, so run them concurrently rather than
-      // paying for that split in latency too.
-      const judgmentPrompt = prompts.judgment.build({
-        extraction,
-        evidenceByRequirement: byRequirement,
-        bullets,
-        facts,
-        keywords,
+      const judgment = await generateStructured({
+        tier: "deep",
+        systemInstruction: prompts.judgment.system,
+        prompt: prompts.judgment.build({
+          extraction,
+          evidenceByRequirement: byRequirement,
+          bullets,
+          facts,
+          keywords,
+        }),
+        schema: judgmentSchema,
+        responseSchema: zodToGemini(judgmentSchema),
+        temperature: 0.3,
       });
-
-      const [scores, judgmentBullets] = await Promise.all([
-        generateStructured({
-          tier: "deep",
-          systemInstruction: prompts.judgment.system,
-          prompt: judgmentPrompt,
-          schema: judgmentScoresSchema,
-          responseSchema: zodToGemini(judgmentScoresSchema),
-          temperature: 0.3,
-        }),
-        generateStructured({
-          tier: "deep",
-          systemInstruction: prompts.judgment.system,
-          prompt: judgmentPrompt,
-          schema: judgmentBulletsSchema,
-          responseSchema: zodToGemini(judgmentBulletsSchema),
-          temperature: 0.3,
-        }),
-      ]);
-
-      const judgment = { ...scores, ...judgmentBullets };
 
       // — Validation —
       const allowed = allowedQuantitiesFor(facts);
