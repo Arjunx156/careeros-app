@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, Search } from "lucide-react";
+import { DeleteJobButton } from "@/components/jobs/delete-job-button";
 import { Select } from "@/components/ui/field";
 import { STATUS_CONFIG } from "@/lib/applications/status";
 import { BAND_TEXT, scoreBand } from "@/lib/score";
@@ -25,6 +26,10 @@ export type JobRow = {
   analysisId: string | null;
   applicationId: string | null;
   applicationStatus: ApplicationStatus | null;
+  /** Totals, not just the one row rendered above — the delete confirmation
+   *  has to state everything the cascade will take. */
+  analysisCount: number;
+  applicationCount: number;
 };
 
 /** Distinct non-null values for a filter dropdown, sorted. */
@@ -235,17 +240,26 @@ export function JobsTable({ jobs }: { jobs: JobRow[] }) {
                   {job.dateFound}
                 </td>
                 <td className="px-4 py-2.5">
-                  {job.jobUrl ? (
-                    <a
-                      href={job.jobUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label={`Open the ${job.company} posting`}
-                      className="grid size-7 place-items-center rounded-[var(--radius-badge)] text-ink-muted hover:bg-surface-hover hover:text-ink"
-                    >
-                      <ExternalLink aria-hidden className="size-3.5" />
-                    </a>
-                  ) : null}
+                  <div className="flex items-center justify-end gap-1">
+                    {job.jobUrl ? (
+                      <a
+                        href={job.jobUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Open the ${job.company} posting`}
+                        className="grid size-7 place-items-center rounded-[var(--radius-badge)] text-ink-muted hover:bg-surface-hover hover:text-ink"
+                      >
+                        <ExternalLink aria-hidden className="size-3.5" />
+                      </a>
+                    ) : null}
+                    <DeleteJobButton
+                      jobId={job.id}
+                      company={job.company}
+                      role={job.role}
+                      analysisCount={job.analysisCount}
+                      applicationCount={job.applicationCount}
+                    />
+                  </div>
                 </td>
               </tr>
             ))}

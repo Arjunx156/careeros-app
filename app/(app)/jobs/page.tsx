@@ -40,6 +40,9 @@ export default async function JobsPage() {
         take: 1,
         select: { id: true, status: true },
       },
+      // Deleting a job cascades to its analyses; the confirmation dialog needs
+      // the totals, which the `take: 1` selections above cannot give it.
+      _count: { select: { analyses: true, applications: true } },
     },
   });
 
@@ -59,6 +62,8 @@ export default async function JobsPage() {
     analysisId: job.analyses[0]?.id ?? null,
     applicationId: job.applications[0]?.id ?? null,
     applicationStatus: job.applications[0]?.status ?? null,
+    analysisCount: job._count.analyses,
+    applicationCount: job._count.applications,
   }));
 
   return (
