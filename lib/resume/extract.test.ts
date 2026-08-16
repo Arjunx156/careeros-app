@@ -21,7 +21,7 @@ describe("normalizeExtractedText", () => {
   });
 
   test("strips the non-breaking spaces pdf.js emits between glyphs", () => {
-    expect(normalizeExtractedText("Power BI dashboards")).toBe(
+    expect(normalizeExtractedText("Power BI dashboards")).toBe(
       "Power BI dashboards",
     );
   });
@@ -38,5 +38,25 @@ describe("normalizeExtractedText", () => {
 
   test("returns an empty string for whitespace-only input", () => {
     expect(normalizeExtractedText("   \n\n   ")).toBe("");
+  });
+
+  test("strips control characters PDF extraction leaves behind", () => {
+    // Null byte and form feed are common encoding artifacts; \t and \n must
+    // survive since they are meaningful whitespace, not noise. Built via
+    // fromCharCode rather than string escapes so the raw bytes are unambiguous.
+    const nul = String.fromCharCode(0);
+    const formFeed = String.fromCharCode(12);
+    const withControls = `Led${nul} a${formFeed} team\tof\n5`;
+    // \t is collapsed to a space by the general whitespace pass, same as
+    // any other run of spaces/tabs — only \n is preserved as a line break.
+    expect(normalizeExtractedText(withControls)).toBe("Led a team of\n5");
+  });
+
+  test("strips a lone surrogate without touching a valid surrogate pair", () => {
+    const loneHighSurrogate = String.fromCharCode(0xd83d);
+    const validEmoji = String.fromCodePoint(0x1f600); // a real high+low pair, must survive
+    expect(normalizeExtractedText(`Rating${loneHighSurrogate}: ${validEmoji}`)).toBe(
+      `Rating: ${validEmoji}`,
+    );
   });
 });

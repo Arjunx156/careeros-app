@@ -25,10 +25,24 @@ export type ExtractionFailure = {
 
 export type ExtractionResult = ExtractionSuccess | ExtractionFailure;
 
-/** Collapse the ragged whitespace pdf.js emits, without destroying line structure. */
+/**
+ * Collapse the ragged whitespace pdf.js emits, without destroying line
+ * structure — and strip the control characters and stray surrogates PDF
+ * text extraction occasionally leaves behind (null bytes and form feeds
+ * from encoding artifacts, unpaired surrogates from broken font mappings).
+ * Those survive whitespace normalization untouched, sit quietly in
+ * extractedText, and only surface once this text is embedded in a Gemini
+ * prompt (the judgment/synthesis stages, not extract — JD text is
+ * user-typed and clean), where the API rejects the entire request as
+ * malformed with no indication which field caused it.
+ */
 export function normalizeExtractedText(raw: string): string {
   return raw
     .replace(/\r\n?/g, "\n")
+    // C0 controls and DEL, excluding tab (0x09) and newline (0x0a).
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+    // Lone surrogates only — a valid high/low pair (real astral-plane text) is left intact.
+    .replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, "")
     .replace(/[ \t ]+/g, " ")
     .replace(/ *\n */g, "\n")
     .replace(/\n{3,}/g, "\n\n")
