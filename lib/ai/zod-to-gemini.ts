@@ -13,26 +13,65 @@ import { z } from "zod";
  */
 export type GeminiSchema = Record<string, unknown>;
 
+type ZodCheckDef = {
+  check?: string;
+  format?: string;
+  /** Present on max_length/min_length (array/string length bounds). */
+  maximum?: number;
+  minimum?: number;
+  /** Present on less_than/greater_than (number range bounds — `.max()`/`.min()`). */
+  value?: number;
+};
+
 type ZodInternals = {
   type: string;
   shape?: Record<string, z.ZodType>;
   element?: z.ZodType;
   innerType?: z.ZodType;
   entries?: Record<string, string>;
-  checks?: Array<{ _zod?: { def?: { check?: string; format?: string } } }>;
+  checks?: Array<{ _zod?: { def?: ZodCheckDef } }>;
 };
 
 function internals(schema: z.ZodType): ZodInternals {
   return (schema as unknown as { _def: ZodInternals })._def;
 }
 
+function checkDefs(def: ZodInternals): ZodCheckDef[] {
+  return def.checks?.map((check) => check._zod?.def).filter((d) => d !== undefined) ?? [];
+}
+
 function isInteger(def: ZodInternals): boolean {
-  return (
-    def.checks?.some((check) => {
-      const inner = check._zod?.def;
-      return inner?.format === "safeint" || inner?.check === "int";
-    }) ?? false
+  return checkDefs(def).some(
+    (check) => check.format === "safeint" || check.check === "int",
   );
+}
+
+/** `maxItems`/`minItems` for `.max()`/`.min()` on `z.array()` — Gemini honours both. */
+function arrayBounds(def: ZodInternals): GeminiSchema {
+  const bounds: GeminiSchema = {};
+  for (const check of checkDefs(def)) {
+    if (check.check === "max_length" && check.maximum !== undefined) {
+      bounds.maxItems = check.maximum;
+    }
+    if (check.check === "min_length" && check.minimum !== undefined) {
+      bounds.minItems = check.minimum;
+    }
+  }
+  return bounds;
+}
+
+/** `maximum`/`minimum` for `.max()`/`.min()` on `z.number()` — same reasoning as arrayBounds. */
+function numberBounds(def: ZodInternals): GeminiSchema {
+  const bounds: GeminiSchema = {};
+  for (const check of checkDefs(def)) {
+    if (check.check === "less_than" && check.value !== undefined) {
+      bounds.maximum = check.value;
+    }
+    if (check.check === "greater_than" && check.value !== undefined) {
+      bounds.minimum = check.value;
+    }
+  }
+  return bounds;
 }
 
 export function zodToGemini(schema: z.ZodType): GeminiSchema {
@@ -62,13 +101,14 @@ export function zodToGemini(schema: z.ZodType): GeminiSchema {
       return {
         type: "ARRAY",
         items: def.element ? zodToGemini(def.element) : { type: "STRING" },
+        ...arrayBounds(def),
       };
 
     case "string":
       return { type: "STRING" };
 
     case "number":
-      return { type: isInteger(def) ? "INTEGER" : "NUMBER" };
+      return { type: isInteger(def) ? "INTEGER" : "NUMBER", ...numberBounds(def) };
 
     case "boolean":
       return { type: "BOOLEAN" };

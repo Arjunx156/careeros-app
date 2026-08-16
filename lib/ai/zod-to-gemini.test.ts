@@ -75,6 +75,26 @@ describe("zodToGemini", () => {
   test("throws on an unsupported type rather than emitting a wrong schema", () => {
     expect(() => zodToGemini(z.date())).toThrow(/unsupported/i);
   });
+
+  test("propagates .max()/.min() on arrays as maxItems/minItems", () => {
+    // Without this, Gemini has no way to know an array must stay short, and a
+    // response that is schema-shaped but too long fails our own Zod
+    // re-validation downstream — the model never even knew the limit existed.
+    expect(zodToGemini(z.array(z.string()).max(10).min(2))).toEqual({
+      type: "ARRAY",
+      items: { type: "STRING" },
+      maxItems: 10,
+      minItems: 2,
+    });
+  });
+
+  test("propagates .max()/.min() on numbers as maximum/minimum", () => {
+    expect(zodToGemini(z.number().int().min(0).max(100))).toEqual({
+      type: "INTEGER",
+      maximum: 100,
+      minimum: 0,
+    });
+  });
 });
 
 describe("wrapper types", () => {
