@@ -80,7 +80,20 @@ const bulletJudgment = z.object({
   whatChanged: z.string(),
 });
 
-export const judgmentSchema = z.object({
+/**
+ * Split across two Gemini calls rather than one combined schema.
+ *
+ * requirementJudgment and bulletJudgment are each a handful of fields deep,
+ * and either one's array paired with the scores below decodes fine on its
+ * own. Combined into one responseSchema, Gemini rejects the request outright
+ * with a bare 400 INVALID_ARGUMENT and no further detail — confirmed by
+ * bisecting the schema directly against the API: two full-shape copies of
+ * bulletJudgment alone (no requirementJudgment involved) already trip it,
+ * while the same two arrays with trivial one-field item shapes do not. This
+ * is a real complexity/size ceiling on structured output, not a bug in any
+ * one field's shape.
+ */
+export const judgmentScoresSchema = z.object({
   // Scores the model is genuinely better placed to judge than code.
   experienceScore: score,
   skillsScore: score,
@@ -92,9 +105,16 @@ export const judgmentSchema = z.object({
   scoreReasoning: z.string(),
 
   requirements: z.array(requirementJudgment).max(20),
+});
+export type JudgmentScores = z.infer<typeof judgmentScoresSchema>;
+
+export const judgmentBulletsSchema = z.object({
   bullets: z.array(bulletJudgment).max(15),
 });
-export type Judgment = z.infer<typeof judgmentSchema>;
+export type JudgmentBullets = z.infer<typeof judgmentBulletsSchema>;
+
+/** The two calls' results merged back into the one shape the rest of the app expects. */
+export type Judgment = JudgmentScores & JudgmentBullets;
 
 // ─── Stage 3: Synthesis (deep tier, prior stage outputs only) ────────────────
 
