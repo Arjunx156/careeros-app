@@ -237,6 +237,7 @@ export async function generateStructured<T>({
   const candidates = modelsFor(tier);
 
   let lastError: unknown;
+  let lastModel: string | undefined;
 
   /**
    * Ceiling on total requests for one stage.
@@ -295,7 +296,17 @@ export async function generateStructured<T>({
         return result.data;
       } catch (error) {
         lastError = error;
+        lastModel = model;
         const message = error instanceof Error ? error.message : String(error);
+
+        // The client-facing error is deliberately terse (raw Google API
+        // text, e.g. "Request contains an invalid argument."), which is
+        // useless for telling a bad model name apart from a bad schema apart
+        // from a bad prompt. Log which model/attempt actually produced it.
+        console.error(
+          `[gemini] ${model} (tier=${tier}, attempt=${attempt + 1}/${maxRetries + 1}) failed:`,
+          error,
+        );
 
         // Out of daily quota on this model: remember it and move to the next
         // one immediately. Retrying here would waste the retry budget on a
@@ -315,10 +326,20 @@ export async function generateStructured<T>({
     }
   }
 
-  if (lastError instanceof AiResponseError || lastError instanceof AiNotConfiguredError) {
-    throw lastError;
-  }
-  throw new AiResponseError(
-    lastError instanceof Error ? lastError.message : "The AI request failed.",
-  );
+  if (lastError instanceof AiNotConfiguredError) throw lastError;
+
+  // Prefix with the model that actually produced this so the compact
+  // stage-failure log (which only ever shows this message, not the
+  // per-attempt logs above) is self-contained rather than a bare Google
+  // error string with no way to tell which model or tier it came from.
+  const prefix = lastModel ? `[${lastModel}] ` : "";
+  const rawMessage =
+    lastError instanceof AiResponseError
+      ? lastError.message
+      : lastError instanceof Error
+        ? lastError.message
+        : "The AI request failed.";
+  const raw = lastError instanceof AiResponseError ? lastError.raw : undefined;
+
+  throw new AiResponseError(`${prefix}${rawMessage}`, raw);
 }
