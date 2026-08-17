@@ -67,6 +67,12 @@ export const createApplicationSchema = z.object({
   resumeVersionId: optionalText(40),
   jobDescriptionId: optionalText(40),
   analysisId: optionalText(40),
+  /**
+   * Carried over when an application is started from an analysis, so the
+   * score the decision was made on is visible in the pipeline without
+   * reopening the analysis. Manual entry leaves it null.
+   */
+  matchScore: optionalInt,
 
   recruiterName: optionalText(120),
   recruiterEmail: optionalText(160),

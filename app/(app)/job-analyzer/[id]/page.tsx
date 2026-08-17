@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { format } from "date-fns";
 import { AlertTriangle, ArrowLeft, ExternalLink, FileText } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
+import { AddToApplications } from "@/components/analyzer/add-to-applications";
 import { AnalysisResults } from "@/components/analyzer/analysis-results";
 import { OptimizePanel } from "@/components/resume/optimize-panel";
 import { ResumeAnalysisResume } from "@/components/analyzer/analysis-resume-button";
@@ -50,6 +51,21 @@ export default async function AnalysisPage(props: PageProps<"/job-analyzer/[id]"
     select: { id: true, name: true, pdfUrl: true, docxUrl: true },
   });
 
+  // Matched on the job as well as this analysis: re-analysing a job produces a
+  // second analysis, and that should still count as already being tracked
+  // rather than inviting a duplicate application.
+  const existingApplication = await prisma.application.findFirst({
+    where: {
+      userId,
+      OR: [
+        { analysisId: analysis.id },
+        { jobDescriptionId: analysis.jobDescriptionId },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+
   const record = toAnalysisRecord(analysis);
   const isIncomplete = analysis.status !== "complete";
 
@@ -68,6 +84,16 @@ export default async function AnalysisPage(props: PageProps<"/job-analyzer/[id]"
         description={`${analysis.jobDescription.role} · analyzed ${format(analysis.createdAt, "d MMM yyyy")}`}
         actions={
           <>
+            <AddToApplications
+              analysisId={analysis.id}
+              jobDescriptionId={analysis.jobDescriptionId}
+              company={analysis.jobDescription.company}
+              role={analysis.jobDescription.role}
+              matchScore={analysis.overallScore}
+              resumeVersionId={analysis.resumeVersion.id}
+              resumeName={analysis.resumeVersion.name}
+              existingApplicationId={existingApplication?.id ?? null}
+            />
             {analysis.jobDescription.jobUrl ? (
               <a
                 href={analysis.jobDescription.jobUrl}
